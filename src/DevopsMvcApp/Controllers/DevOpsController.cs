@@ -192,41 +192,53 @@ public class DevOpsController : Controller
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
         if (!ModelState.IsValid) return View(req);
 
-        // Get the repo to discover its actual default branch
-        var repo = await _devOps.GetRepoAsync(req.RepositoryId);
-        var actualBranch = repo?.DefaultBranch?.Replace("refs/heads/", "") ?? "master";
-
-        // If requested branch differs from actual, create it from actual first
-        // so it inherits all project files (not orphaned)
-        if (!string.Equals(req.DefaultBranch, actualBranch, StringComparison.OrdinalIgnoreCase))
+        try
         {
-            try
+            // Get the repo to discover its actual default branch
+            var repo = await _devOps.GetRepoAsync(req.RepositoryId);
+            var actualBranch = repo?.DefaultBranch?.Replace("refs/heads/", "") ?? "master";
+
+            // If requested branch differs from actual, create it from actual first
+            // so it inherits all project files (not orphaned)
+            if (!string.Equals(req.DefaultBranch, actualBranch, StringComparison.OrdinalIgnoreCase))
             {
-                await _devOps.CreateBranchAsync(req.RepositoryId, req.DefaultBranch, actualBranch);
+                try
+                {
+                    await _devOps.CreateBranchAsync(req.RepositoryId, req.DefaultBranch, actualBranch);
+                }
+                catch { /* branch may already exist */ }
             }
-            catch { /* branch may already exist */ }
+
+            // Now set repo's default branch to the pipeline branch
+            await _devOps.SetRepoDefaultBranchAsync(req.RepositoryId, req.DefaultBranch);
+
+            // 1. Commit the YAML pipeline file (auto-falls back to "edit" if file exists)
+            var yaml = GetDotNetPipelineYaml();
+            await _devOps.CommitFileAsync(req.RepositoryId, req.DefaultBranch, req.YamlPath, yaml,
+                $"Add {req.YamlPath} pipeline definition");
+
+            // 2. Create the pipeline definition
+            var pipeline = await _devOps.CreatePipelineAsync(req);
+            if (pipeline == null)
+            {
+                TempData["Error"] = "Failed to create pipeline.";
+                return RedirectToAction(nameof(Pipelines));
+            }
+
+            // 3. Queue a run (explicitly pass branch to avoid propagation races)
+            var run = await _devOps.RunPipelineAsync(pipeline.Id, req.DefaultBranch);
+            if (run == null)
+            {
+                TempData["Warning"] = $"Pipeline '{pipeline.Name}' created but the first run could not be queued. You can manually queue a run.";
+                return RedirectToAction(nameof(Pipelines));
+            }
+
+            TempData["Success"] = $"Pipeline '{pipeline.Name}' created and queued.";
         }
-
-        // Now set repo's default branch to the pipeline branch
-        await _devOps.SetRepoDefaultBranchAsync(req.RepositoryId, req.DefaultBranch);
-
-        // 1. Commit the YAML pipeline file (auto-falls back to "edit" if file exists)
-        var yaml = GetDotNetPipelineYaml();
-        await _devOps.CommitFileAsync(req.RepositoryId, req.DefaultBranch, req.YamlPath, yaml,
-            $"Add {req.YamlPath} pipeline definition");
-
-        // 2. Create the pipeline definition
-        var pipeline = await _devOps.CreatePipelineAsync(req);
-        if (pipeline == null)
+        catch (HttpRequestException ex)
         {
-            TempData["Error"] = "Failed to create pipeline.";
-            return RedirectToAction(nameof(Pipelines));
+            TempData["Error"] = $"Pipeline creation failed: {ex.Message}";
         }
-
-        // 3. Queue a run (YAML is now on a valid branch with all project files)
-        await _devOps.RunPipelineAsync(pipeline.Id);
-
-        TempData["Success"] = $"Pipeline '{pipeline.Name}' created and queued.";
         return RedirectToAction(nameof(Pipelines));
     }
 

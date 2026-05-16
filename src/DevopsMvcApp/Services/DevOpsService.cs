@@ -584,19 +584,32 @@ public class DevOpsService
         }).ToList();
     }
 
-    /// <summary>Queues a new pipeline run.</summary>
-    public async Task<PipelineRun?> RunPipelineAsync(int pipelineId)
+    /// <summary>Queues a new pipeline run, with retries for transient "file not found" errors.</summary>
+    public async Task<PipelineRun?> RunPipelineAsync(int pipelineId, string? branch = null)
     {
-        var body = JsonSerializer.Serialize(new { }, JsonOpts);
-        var json = await PostAsync(Api($"pipelines/{pipelineId}/runs"), body);
-        var r = JsonDocument.Parse(json).RootElement;
-        return new PipelineRun
+        var body = branch != null
+            ? $"{{\"resources\":{{\"repositories\":{{\"self\":{{\"refName\":\"refs/heads/{branch}\"}}}}}}}}"
+            : "{}";
+        for (int attempt = 0; attempt < 3; attempt++)
         {
-            Id = r.GetProperty("id").GetInt32(),
-            State = r.GetProperty("state").GetString()!,
-            CreatedDate = r.GetProperty("createdDate").GetDateTime(),
-            WebUrl = r.GetProperty("_links").GetProperty("web").GetProperty("href").GetString()!
-        };
+            try
+            {
+                var json = await PostAsync(Api($"pipelines/{pipelineId}/runs"), body);
+                var r = JsonDocument.Parse(json).RootElement;
+                return new PipelineRun
+                {
+                    Id = r.GetProperty("id").GetInt32(),
+                    State = r.GetProperty("state").GetString()!,
+                    CreatedDate = r.GetProperty("createdDate").GetDateTime(),
+                    WebUrl = r.GetProperty("_links").GetProperty("web").GetProperty("href").GetString()!
+                };
+            }
+            catch (HttpRequestException ex) when (attempt < 2 && ex.Message.Contains("not found"))
+            {
+                await Task.Delay(3000);
+            }
+        }
+        return null;
     }
 
     /// <summary>Permanently deletes a pipeline definition via the Build Definitions API
