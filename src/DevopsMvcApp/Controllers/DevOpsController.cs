@@ -709,7 +709,7 @@ public class DevOpsController : Controller
         return true;
     }
 
-    /// <summary>Returns the default .NET CI pipeline YAML content.</summary>
+    /// <summary>Returns the default .NET CI pipeline YAML content with self-healing on failure.</summary>
     private static string GetDotNetPipelineYaml()
     {
         return @"
@@ -724,6 +724,7 @@ pool:
 
 variables:
   buildConfiguration: 'Release'
+  maxAutoFixAttempts: 3
 
 steps:
 - task: DotNetCoreCLI@2
@@ -758,6 +759,75 @@ steps:
   inputs:
     PathtoPublish: '$(Build.ArtifactStagingDirectory)'
     ArtifactName: 'drop'
+
+- powershell: |
+    # Self-healing step (runs only when previous steps fail)
+    $ErrorActionPreference = 'Continue'
+    $attempt = [int]::Parse('$(RELEASE_ARTIFACTS_AUTOFIX_COUNTER)')
+    $maxAttempts = [int]::Parse('$(maxAutoFixAttempts)')
+    Write-Host ""Auto-fix attempt: $attempt / $maxAttempts""
+
+    if ($attempt -ge $maxAttempts) {
+        Write-Host '##[error]Max auto-fix attempts reached. Manual intervention required.'
+        exit 1
+    }
+
+    # Find the .csproj to detect project structure
+    $csprojFiles = Get-ChildItem -Path '$(Build.SourcesDirectory)' -Recurse -Filter *.csproj -ErrorAction SilentlyContinue
+    if (-not $csprojFiles) {
+        Write-Host '##[error]No .csproj files found in repository.'
+        exit 1
+    }
+    $projectDir = Split-Path $csprojFiles[0].FullName -Parent
+    $relativeDir = Resolve-Path -Path $projectDir -Relative
+    $projGlob = ""$relativeDir/*.csproj"".Replace('\', '/').TrimStart('./')
+
+    # Fix 1: Missing project path in dotnet steps
+    $yamlFile = Join-Path '$(Build.SourcesDirectory)' 'azure-pipelines.yml'
+    if (Test-Path $yamlFile) {
+        $yaml = Get-Content $yamlFile -Raw
+        if ($yaml -notmatch 'projects:') {
+            Write-Host '##[warning]Adding project path to dotnet steps...'
+            $yaml = $yaml -replace ""(command: 'restore')"", ""`$1`n    projects: '$projGlob'""
+            $yaml = $yaml -replace ""(command: 'build')"", ""`$1`n    projects: '$projGlob'""
+            $yaml = $yaml -replace ""(command: 'test')"", ""`$1`n    projects: '$projGlob'""
+            $yaml = $yaml -replace ""(command: 'publish')"", ""`$1`n    projects: '$projGlob'""
+            Set-Content -Path $yamlFile -Value $yaml
+            git config user.email 'azdo-bot@dev.azure.com'
+            git config user.name 'Azure DevOps Auto-Fix'
+            git add $yamlFile
+            git commit -m 'auto-fix: add project path to dotnet steps'
+            git push origin HEAD:'$(Build.SourceBranch)'
+            Write-Host '##[warning]Fix committed. Triggering rebuild...'
+        }
+    }
+
+    # Fix 2: Branch mismatch (repo uses master but pipeline expects main)
+    $defaultBranch = git symbolic-ref HEAD 2>$null
+    if ($defaultBranch -like '*/master' -and '$(Build.SourceBranch)' -like '*/main') {
+        Write-Host '##[warning]Branch mismatch - creating main branch from master...'
+        git checkout -b main
+        git push origin main
+    }
+
+    # Trigger new build via REST API
+    $pipeId = '$(System.DefinitionId)'
+    $pat = '$(System.AccessToken)'
+    $base64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("":$pat""))
+    $body = @{ definition = @{ id = [int]::Parse($pipeId) } } | ConvertTo-Json
+    $url = '$(System.TeamFoundationCollectionUri)$(System.TeamProject)/_apis/pipelines/$pipeId/runs?api-version=7.1'
+    try {
+        Invoke-RestMethod -Uri $url -Method Post -Body $body -ContentType 'application/json' -Headers @{
+            Authorization = ""Basic $base64""
+        } | Out-Null
+        Write-Host ""##[warning]New build triggered (attempt $($attempt + 1)).""
+    } catch {
+        Write-Host ""##[error]Failed to trigger rebuild: $_""
+    }
+  displayName: 'Auto-heal on failure'
+  condition: failed()
+  env:
+    SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 ".TrimStart();
     }
 }
