@@ -45,13 +45,13 @@ public class DevOpsService
     public string? Project => _connection?.Project;
 
     // ── URL builders ──
-    // Api()    → scoped to {org}/{project}
-    // OrgApi() → org-level (no project)
-    // VsmApi() → Release Management (separate subdomain)
+    /// <summary>Builds a project-scoped Azure DevOps REST API URL with api-version=7.1.</summary>
     private string Api(string path) =>
         $"https://dev.azure.com/{_connection!.Organization}/{_connection.Project}/_apis/{path}?api-version=7.1";
+    /// <summary>Builds an org-level Azure DevOps REST API URL (no project segment).</summary>
     private string OrgApi(string path) =>
         $"https://dev.azure.com/{_connection!.Organization}/_apis/{path}?api-version=7.1";
+    /// <summary>Builds a Release Management (vsrm) REST API URL with api-version=7.1.</summary>
     private string VsmApi(string path) =>
         $"https://vsrm.dev.azure.com/{_connection!.Organization}/{_connection.Project}/_apis/release/{path}?api-version=7.1";
 
@@ -1083,6 +1083,7 @@ public class DevOpsService
     //  Non-2xx responses throw HttpRequestException with the response body.
     // ══════════════════════════════════════════
 
+    /// <summary>Sends an HTTP GET and returns the response body as a string.</summary>
     private async Task<string> GetAsync(string url)
     {
         var resp = await _http.GetAsync(url);
@@ -1092,6 +1093,7 @@ public class DevOpsService
         return content;
     }
 
+    /// <summary>Sends an HTTP POST with a JSON body and returns the response body.</summary>
     private async Task<string> PostAsync(string url, string body)
     {
         var resp = await _http.PostAsync(url, new StringContent(body, Encoding.UTF8, "application/json"));
@@ -1101,6 +1103,7 @@ public class DevOpsService
         return content;
     }
 
+    /// <summary>Sends an HTTP PATCH with a JSON body and returns the response body.</summary>
     private async Task<string> PatchAsync(string url, string body)
     {
         var req = new HttpRequestMessage(HttpMethod.Patch, url)
@@ -1112,6 +1115,7 @@ public class DevOpsService
         return content;
     }
 
+    /// <summary>Sends an HTTP DELETE and throws on non-success status codes.</summary>
     private async Task DeleteAsync(string url)
     {
         var resp = await _http.DeleteAsync(url);
@@ -1122,5 +1126,6 @@ public class DevOpsService
         }
     }
 
+    /// <summary>Truncates a string to at most <c>max</c> characters, appending "..." if truncated.</summary>
     private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max] + "...";
 }
