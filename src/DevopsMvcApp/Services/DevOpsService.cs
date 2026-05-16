@@ -265,6 +265,25 @@ public class DevOpsService
         }).ToList();
     }
 
+    public async Task<DevOpsRepository?> GetRepoAsync(string repoId)
+    {
+        try
+        {
+            var json = await GetAsync(Api($"git/repositories/{repoId}"));
+            var r = JsonDocument.Parse(json).RootElement;
+            return new DevOpsRepository
+            {
+                Id = r.GetProperty("id").GetString()!,
+                Name = r.GetProperty("name").GetString()!,
+                Url = r.GetProperty("url").GetString()!,
+                RemoteUrl = r.GetProperty("remoteUrl").GetString()!,
+                DefaultBranch = r.TryGetProperty("defaultBranch", out var b) ? b.GetString() ?? "main" : "main",
+                WebUrl = r.GetProperty("webUrl").GetString()!
+            };
+        }
+        catch { return null; }
+    }
+
     /// <summary>Creates a new empty Git repo, then sets its default branch to "main".</summary>
     public async Task<DevOpsRepository?> CreateRepositoryAsync(string name)
     {
