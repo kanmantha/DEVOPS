@@ -28,3 +28,23 @@ public class PipelineRun
     public DateTime CreatedDate { get; set; }
     public string WebUrl { get; set; } = string.Empty;
 }
+
+/// <summary>Result of an automated end-to-end deploy operation.</summary>
+public class AutoDeployResult
+{
+    public List<DeployStep> Steps { get; set; } = new();
+    public bool Success => Steps.All(s => !s.Failed);
+    public string? PipelineUrl { get; set; }
+    public string? BuildUrl { get; set; }
+    public string? ReleaseUrl { get; set; }
+}
+
+/// <summary>A single step within the auto-deploy flow.</summary>
+public class DeployStep
+{
+    public string Name { get; set; } = "";
+    public bool Completed { get; set; }
+    public bool Failed { get; set; }
+    public string? ErrorMessage { get; set; }
+    public string? Detail { get; set; }
+}

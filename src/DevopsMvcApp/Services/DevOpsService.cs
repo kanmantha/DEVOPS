@@ -745,6 +745,25 @@ public class DevOpsService
         }).ToList();
     }
 
+    public async Task<DevOpsBuild?> GetBuildAsync(int buildId)
+    {
+        try
+        {
+            var json = await GetAsync(Api($"build/builds/{buildId}"));
+            var b = JsonDocument.Parse(json).RootElement;
+            return new DevOpsBuild
+            {
+                Id = b.GetProperty("id").GetInt32(),
+                BuildNumber = b.GetProperty("buildNumber").GetString()!,
+                Status = b.GetProperty("status").GetString()!,
+                Result = b.TryGetProperty("result", out var r) ? r.GetString() ?? "" : "",
+                QueueTime = b.GetProperty("queueTime").GetDateTime(),
+                WebUrl = b.GetProperty("_links").GetProperty("web").GetProperty("href").GetString()!
+            };
+        }
+        catch { return null; }
+    }
+
     /// <summary>Lists artifacts produced by a build.</summary>
     public async Task<List<DevOpsArtifact>> GetArtifactsAsync(int buildId)
     {

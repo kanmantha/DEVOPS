@@ -97,6 +97,190 @@ public class DevOpsController : Controller
         return RedirectToAction(nameof(Connect));
     }
 
+    /// <summary>Shows the auto-deploy page with status of each step (pipeline → build → release → deploy).</summary>
+    [HttpGet]
+    public async Task<IActionResult> AutoDeploy()
+    {
+        if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
+        var repos = await _devOps.GetRepositoriesAsync();
+        ViewBag.Repositories = repos;
+        return View(new AutoDeployResult());
+    }
+
+    /// <summary>Orchestrates the full CI/CD flow: commits YAML, creates pipeline, queues build, waits for completion, creates release, deploys.</summary>
+    [HttpPost]
+    public async Task<IActionResult> AutoDeploy(string repoId, string defaultBranch)
+    {
+        if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
+        var result = new AutoDeployResult();
+        var branch = string.IsNullOrWhiteSpace(defaultBranch) ? "main" : defaultBranch.Trim();
+
+        try
+        {
+            // ── Step 1: Set up branch ──
+            var step1 = new DeployStep { Name = "Setting up branch" };
+            result.Steps.Add(step1);
+            try
+            {
+                var repo = await _devOps.GetRepoAsync(repoId);
+                var actualBranch = repo?.DefaultBranch?.Replace("refs/heads/", "") ?? "master";
+                if (!string.Equals(branch, actualBranch, StringComparison.OrdinalIgnoreCase))
+                {
+                    try { await _devOps.CreateBranchAsync(repoId, branch, actualBranch); }
+                    catch { }
+                }
+                await _devOps.SetRepoDefaultBranchAsync(repoId, branch);
+                step1.Completed = true;
+                step1.Detail = $"Branch '{branch}' ready";
+            }
+            catch (Exception ex) { step1.Failed = true; step1.ErrorMessage = ex.Message; }
+
+            // ── Step 2: Commit pipeline YAML ──
+            var step2 = new DeployStep { Name = "Committing pipeline YAML" };
+            result.Steps.Add(step2);
+            try
+            {
+                var yaml = GetDotNetPipelineYaml();
+                await _devOps.CommitFileAsync(repoId, branch, "azure-pipelines.yml", yaml,
+                    "Add CI pipeline definition");
+                step2.Completed = true;
+                step2.Detail = "azure-pipelines.yml committed";
+            }
+            catch (Exception ex) { step2.Failed = true; step2.ErrorMessage = ex.Message; }
+
+            // ── Step 3: Create pipeline definition ──
+            var step3 = new DeployStep { Name = "Creating pipeline definition" };
+            result.Steps.Add(step3);
+            try
+            {
+                var pipeline = await _devOps.CreatePipelineAsync(new CreatePipelineRequest
+                {
+                    Name = "CI-CD Pipeline",
+                    RepositoryId = repoId,
+                    DefaultBranch = branch,
+                    YamlPath = "azure-pipelines.yml"
+                });
+                if (pipeline != null)
+                {
+                    step3.Completed = true;
+                    step3.Detail = $"Pipeline '{pipeline.Name}' created";
+                    result.PipelineUrl = pipeline.WebUrl;
+
+                    // ── Step 4: Queue build ──
+                    var step4 = new DeployStep { Name = "Queuing build" };
+                    result.Steps.Add(step4);
+                    try
+                    {
+                        var run = await _devOps.RunPipelineAsync(pipeline.Id, branch);
+                        if (run != null)
+                        {
+                            step4.Completed = true;
+                            step4.Detail = $"Run #{run.Id} queued";
+                            result.BuildUrl = run.WebUrl;
+
+                            // ── Step 5: Wait for build to complete ──
+                            var step5 = new DeployStep { Name = "Waiting for build to complete" };
+                            result.Steps.Add(step5);
+                            try
+                            {
+                                for (int i = 0; i < 60; i++) // poll up to ~10 min
+                                {
+                                    await Task.Delay(10000);
+                                    var build = await _devOps.GetBuildAsync(run.Id);
+                                    if (build == null) continue;
+                                    if (build.Status == "completed")
+                                    {
+                                        step5.Completed = true;
+                                        step5.Detail = $"Build #{build.Id} completed: {build.Result}";
+                                        result.BuildUrl = build.WebUrl;
+
+                                        if (build.Result == "succeeded")
+                                        {
+                                            // ── Step 6: Create release definition ──
+                                            var step6 = new DeployStep { Name = "Creating release definition" };
+                                            result.Steps.Add(step6);
+                                            try
+                                            {
+                                                var defs = await _devOps.GetReleaseDefinitionsAsync();
+                                                var existing = defs.FirstOrDefault(d => d.Name == "Auto-Deploy Release");
+                                                if (existing != null)
+                                                {
+                                                    step6.Completed = true;
+                                                    step6.Detail = $"Release definition '{existing.Name}' already exists";
+                                                }
+                                                else
+                                                {
+                                                    var def = await _devOps.CreateReleaseDefinitionAsync("Auto-Deploy Release",
+                                                        "Auto-created by DevOps Portal");
+                                                    if (def != null)
+                                                    {
+                                                        step6.Completed = true;
+                                                        step6.Detail = $"Release definition '{def.Name}' created";
+                                                    }
+                                                    else { step6.Failed = true; step6.ErrorMessage = "Failed to create release definition"; }
+                                                }
+                                            }
+                                            catch (Exception ex) { step6.Failed = true; step6.ErrorMessage = ex.Message; }
+
+                                            // ── Step 7: Deploy ──
+                                            var step7 = new DeployStep { Name = "Deploying application" };
+                                            result.Steps.Add(step7);
+                                            try
+                                            {
+                                                var envs = await _devOps.GetDeploymentEnvironmentsAsync();
+                                                var dev = envs.FirstOrDefault();
+                                                if (dev != null)
+                                                {
+                                                    var slot = dev.Slots.FirstOrDefault(s => !s.Active);
+                                                    if (slot != null)
+                                                    {
+                                                        await _devOps.DeployToSlotAsync(dev.Name, slot.Label!, build.BuildNumber);
+                                                        await _devOps.SwapSlotsAsync(dev.Name);
+                                                        step7.Completed = true;
+                                                        step7.Detail = $"Deployed v{build.BuildNumber} to {dev.Name}";
+                                                    }
+                                                    else
+                                                    {
+                                                        await _devOps.DeployToSlotAsync(dev.Name, "Blue", build.BuildNumber);
+                                                        step7.Completed = true;
+                                                        step7.Detail = $"Deployed v{build.BuildNumber} to {dev.Name}/Blue";
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    step7.Completed = true;
+                                                    step7.Detail = "No deployment environments configured. Create one from the Deployments tab.";
+                                                }
+                                            }
+                                            catch (Exception ex) { step7.Failed = true; step7.ErrorMessage = ex.Message; }
+                                        }
+                                        break;
+                                    }
+                                }
+                                if (!step5.Completed)
+                                {
+                                    step5.Completed = true;
+                                    step5.Detail = "Build did not complete within the timeout period. Check Pipelines page.";
+                                }
+                            }
+                            catch (Exception ex) { step5.Failed = true; step5.ErrorMessage = ex.Message; }
+                        }
+                        else { step4.Failed = true; step4.ErrorMessage = "Run returned null"; }
+                    }
+                    catch (Exception ex) { step4.Failed = true; step4.ErrorMessage = ex.Message; }
+                }
+                else { step3.Failed = true; step3.ErrorMessage = "Pipeline creation returned null"; }
+            }
+            catch (Exception ex) { step3.Failed = true; step3.ErrorMessage = ex.Message; }
+        }
+        catch (Exception ex)
+        {
+            result.Steps.Add(new DeployStep { Name = "Auto-deploy failed", Failed = true, ErrorMessage = ex.Message });
+        }
+
+        return View(result);
+    }
+
     // ══════════════════════════════════════════
     //  REPOSITORIES
     // ══════════════════════════════════════════

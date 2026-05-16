@@ -1,0 +1,107 @@
+@model AutoDeployResult
+
+@{
+    ViewData["Title"] = "Auto Deploy";
+    var repos = ViewBag.Repositories as List<DevOpsRepository> ?? new();
+    var isResult = Model.Steps.Count > 0;
+}
+
+<div class="page-header">
+    <h1 class="page-title">Auto Deploy</h1>
+    <p class="page-subtitle">One-click CI/CD from credentials to deployment.</p>
+</div>
+
+@if (!isResult)
+{
+    <div class="row g-3">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body p-4">
+                    <form asp-action="AutoDeploy" method="post">
+                        <div class="mb-3">
+                            <label class="form-label">Repository</label>
+                            <select name="repoId" class="form-select" required>
+                                @foreach (var repo in repos)
+                                {
+                                    <option value="@repo.Id">@repo.Name (@repo.DefaultBranch)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Branch</label>
+                            <input name="defaultBranch" class="form-control" value="main" placeholder="main" />
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                                Deploy Now
+                            </button>
+                            <a asp-action="Dashboard" class="btn btn-outline-secondary">Cancel</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="row g-3">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body p-4">
+                    <div class="d-flex align-items-center mb-4">
+                        <h4 class="mb-0 me-3">
+                            @if (Model.Success)
+                            {
+                                <span class="badge bg-success fs-6 p-2">&#10003; Deploy Complete</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-danger fs-6 p-2">&#10007; Deploy Failed</span>
+                            }
+                        </h4>
+                    </div>
+
+                    @foreach (var step in Model.Steps)
+                    {
+                        <div class="d-flex align-items-start mb-3 p-3 rounded-3 @(step.Failed ? "bg-danger bg-opacity-10" : step.Completed ? "bg-success bg-opacity-10" : "bg-light")">
+                            <div class="me-3 fs-5">
+                                @if (step.Failed) { <span class="text-danger">&#10007;</span> }
+                                else if (step.Completed) { <span class="text-success">&#10003;</span> }
+                                else { <span class="text-secondary">&#9679;</span> }
+                            </div>
+                            <div class="flex-grow-1">
+                                <strong>@step.Name</strong>
+                                @if (!string.IsNullOrEmpty(step.Detail))
+                                {
+                                    <div class="text-muted small">@step.Detail</div>
+                                }
+                                @if (!string.IsNullOrEmpty(step.ErrorMessage))
+                                {
+                                    <div class="text-danger small mt-1">@step.ErrorMessage</div>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    <div class="mt-4 d-flex gap-3 flex-wrap">
+                        @if (!string.IsNullOrEmpty(Model.PipelineUrl))
+                        {
+                            <a href="@Model.PipelineUrl" target="_blank" class="btn btn-outline-primary">View Pipeline</a>
+                        }
+                        @if (!string.IsNullOrEmpty(Model.BuildUrl))
+                        {
+                            <a href="@Model.BuildUrl" target="_blank" class="btn btn-outline-primary">View Build</a>
+                        }
+                        @if (!string.IsNullOrEmpty(Model.ReleaseUrl))
+                        {
+                            <a href="@Model.ReleaseUrl" target="_blank" class="btn btn-outline-primary">View Release</a>
+                        }
+                        <a asp-action="Dashboard" class="btn btn-outline-secondary">Back to Dashboard</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
