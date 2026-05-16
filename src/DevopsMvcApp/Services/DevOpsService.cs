@@ -315,14 +315,31 @@ public class DevOpsService
     //  FILE OPERATIONS (commit via push API)
     // ══════════════════════════════════════════
 
+    /// <summary>Pushes via the Azure DevOps Push API, retrying on 409 with a fresh oldObjectId.</summary>
+    private async Task PushWithRetryAsync(string repoId, string branch,
+        Func<string, object> buildBody)
+    {
+        var url = Api($"git/repositories/{repoId}/pushes");
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            var oldObjectId = await GetBranchTipAsync(repoId, branch);
+            var body = JsonSerializer.Serialize(buildBody(oldObjectId), JsonOpts);
+            var resp = await _http.PostAsync(url, new StringContent(body, Encoding.UTF8, "application/json"));
+            var content = await resp.Content.ReadAsStringAsync();
+            if (resp.IsSuccessStatusCode) return;
+            if ((int)resp.StatusCode != 409) // non-conflict errors are fatal
+                throw new HttpRequestException($"{(int)resp.StatusCode} {resp.ReasonPhrase} — {Truncate(content, 200)}");
+        }
+        throw new HttpRequestException($"409 Conflict — retries exhausted for push on {repoId}/{branch}");
+    }
+
     /// <summary>Commits a new file to a branch via the Azure DevOps Push API.</summary>
     public async Task CommitFileAsync(string repoId, string branch, string path, string content, string comment)
     {
-        var oldObjectId = await GetBranchTipAsync(repoId, branch);
         var normalizedPath = path.StartsWith("/") ? path : $"/{path}";
-        var body = JsonSerializer.Serialize(new
+        await PushWithRetryAsync(repoId, branch, oid => new
         {
-            refUpdates = new[] { new { name = $"refs/heads/{branch}", oldObjectId } },
+            refUpdates = new[] { new { name = $"refs/heads/{branch}", oldObjectId = oid } },
             commits = new[]
             {
                 new
@@ -339,18 +356,16 @@ public class DevOpsService
                     }
                 }
             }
-        }, JsonOpts);
-        await PostAsync(Api($"git/repositories/{repoId}/pushes"), body);
+        });
     }
 
     /// <summary>Edits existing file content via a push with changeType "edit".</summary>
     public async Task EditFileAsync(string repoId, string branch, string path, string content, string comment)
     {
-        var oldObjectId = await GetBranchTipAsync(repoId, branch);
         var normalizedPath = path.StartsWith("/") ? path : $"/{path}";
-        var body = JsonSerializer.Serialize(new
+        await PushWithRetryAsync(repoId, branch, oid => new
         {
-            refUpdates = new[] { new { name = $"refs/heads/{branch}", oldObjectId } },
+            refUpdates = new[] { new { name = $"refs/heads/{branch}", oldObjectId = oid } },
             commits = new[]
             {
                 new
@@ -367,18 +382,16 @@ public class DevOpsService
                     }
                 }
             }
-        }, JsonOpts);
-        await PostAsync(Api($"git/repositories/{repoId}/pushes"), body);
+        });
     }
 
     /// <summary>Deletes a file via a push with changeType "delete".</summary>
     public async Task DeleteFileAsync(string repoId, string branch, string path, string comment)
     {
-        var oldObjectId = await GetBranchTipAsync(repoId, branch);
         var normalizedPath = path.StartsWith("/") ? path : $"/{path}";
-        var body = JsonSerializer.Serialize(new
+        await PushWithRetryAsync(repoId, branch, oid => new
         {
-            refUpdates = new[] { new { name = $"refs/heads/{branch}", oldObjectId } },
+            refUpdates = new[] { new { name = $"refs/heads/{branch}", oldObjectId = oid } },
             commits = new[]
             {
                 new
@@ -394,8 +407,7 @@ public class DevOpsService
                     }
                 }
             }
-        }, JsonOpts);
-        await PostAsync(Api($"git/repositories/{repoId}/pushes"), body);
+        });
     }
 
     /// <summary>Delegates to CommitFileAsync (backward compatibility).</summary>
@@ -548,10 +560,18 @@ public class DevOpsService
         };
     }
 
-    /// <summary>Permanently deletes a pipeline definition.</summary>
-    public async Task DeletePipelineAsync(int pipelineId)
+    /// <summary>Permanently deletes a pipeline definition via the Build Definitions API
+    /// (the YAML Pipelines API doesn't support DELETE).</summary>
+    public async Task DeletePipelineAsync(int pipelineId, string pipelineName)
     {
-        await DeleteAsync(Api($"pipelines/{pipelineId}"));
+        // Look up the build definition that backs this YAML pipeline
+        var json = await GetAsync(Api($"build/definitions?name={Uri.EscapeDataString(pipelineName)}"));
+        var root = JsonDocument.Parse(json);
+        var defs = root.RootElement.GetProperty("value").EnumerateArray().ToList();
+        if (defs.Count == 0)
+            throw new HttpRequestException($"No build definition found matching pipeline '{pipelineName}'.");
+        var defId = defs[0].GetProperty("id").GetInt32();
+        await DeleteAsync(Api($"build/definitions/{defId}"));
     }
 
     // ══════════════════════════════════════════

@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace DevopsMvcApp.Models.DevOps;
 
+/// <summary>Azure DevOps connection credentials — stored in session, used to authenticate all API calls.</summary>
 public class DevOpsConnection
 {
     [Required]

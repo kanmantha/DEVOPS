@@ -6,27 +6,19 @@ using DevopsMvcApp.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ──────────────────────────────────────────────
-// Database: SQLite via Entity Framework Core
-// ──────────────────────────────────────────────
+// ── Database: SQLite via Entity Framework Core ──
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlite(connectionString));
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
-// ──────────────────────────────────────────────
-// Data Protection: persist keys to disk so
-// CookieTempDataProvider doesn't warn on every restart
-// ──────────────────────────────────────────────
+// ── Data Protection: persist keys to disk so CookieTempDataProvider doesn't warn on every restart ──
 builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(
         Path.Combine(builder.Environment.ContentRootPath, "Keys")));
 
-// ──────────────────────────────────────────────
-// ASP.NET Core Identity with Individual accounts
-// Email confirmation disabled for dev convenience
-// ──────────────────────────────────────────────
+// ── Identity: Individual accounts with email confirmation disabled for dev convenience ──
 builder.Services.AddDefaultIdentity<IdentityUser>(options =>
     {
         options.SignIn.RequireConfirmedAccount = false;
@@ -35,11 +27,7 @@ builder.Services.AddDefaultIdentity<IdentityUser>(options =>
     .AddEntityFrameworkStores<ApplicationDbContext>();
 builder.Services.AddControllersWithViews();
 
-// ──────────────────────────────────────────────
-// Azure DevOps integration
-// HttpClient is managed via IHttpClientFactory
-// Session stores connection credentials (PAT)
-// ──────────────────────────────────────────────
+// ── Azure DevOps integration: HttpClient + session storage for PAT ──
 builder.Services.AddHttpClient<DevOpsService>();
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession(options =>
@@ -51,9 +39,7 @@ builder.Services.AddSession(options =>
 
 var app = builder.Build();
 
-// ──────────────────────────────────────────────
-// Middleware pipeline
-// ──────────────────────────────────────────────
+// ── Middleware pipeline ──
 if (app.Environment.IsDevelopment())
 {
     app.UseMigrationsEndPoint();
@@ -67,7 +53,7 @@ else
 app.UseHttpsRedirection();
 app.UseRouting();
 
-app.UseSession();          // Must come before UseAuthorization
+app.UseSession();
 app.UseAuthorization();
 
 app.MapStaticAssets();

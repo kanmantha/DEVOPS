@@ -1,5 +1,6 @@
 namespace DevopsMvcApp.Models.DevOps;
 
+/// <summary>Git commit details returned from the Azure DevOps commits API.</summary>
 public class CommitInfo
 {
     public string CommitId { get; set; } = string.Empty;

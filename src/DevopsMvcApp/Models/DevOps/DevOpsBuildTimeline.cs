@@ -1,5 +1,6 @@
 namespace DevopsMvcApp.Models.DevOps;
 
+/// <summary>A single record in a build timeline — represents a phase, job, or task step.</summary>
 public class BuildTimelineRecord
 {
     public string Id { get; set; } = string.Empty;
@@ -14,6 +15,7 @@ public class BuildTimelineRecord
     public List<BuildTimelineRecord> Details { get; set; } = new();
 }
 
+/// <summary>A single line from a build log.</summary>
 public class BuildLogEntry
 {
     public int LineNumber { get; set; }

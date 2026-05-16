@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace DevopsMvcApp.Models;
 
+/// <summary>Product entity stored in the local SQLite database via EF Core.</summary>
 public class Product
 {
     public int Id { get; set; }

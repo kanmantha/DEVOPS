@@ -1,5 +1,6 @@
 namespace DevopsMvcApp.Models.DevOps;
 
+/// <summary>Pull request returned from the Azure DevOps PR API.</summary>
 public class DevOpsPullRequest
 {
     public int PullRequestId { get; set; }
@@ -13,6 +14,7 @@ public class DevOpsPullRequest
     public string WebUrl { get; set; } = string.Empty;
 }
 
+/// <summary>Form model for creating a pull request.</summary>
 public class CreatePullRequestRequest
 {
     public string Title { get; set; } = string.Empty;
@@ -22,6 +24,7 @@ public class CreatePullRequestRequest
     public string RepositoryId { get; set; } = string.Empty;
 }
 
+/// <summary>A comment thread item on a pull request.</summary>
 public class PullRequestComment
 {
     public int Id { get; set; }

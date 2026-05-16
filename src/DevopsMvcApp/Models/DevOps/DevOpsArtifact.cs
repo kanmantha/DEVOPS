@@ -1,5 +1,6 @@
 namespace DevopsMvcApp.Models.DevOps;
 
+/// <summary>Build artifact produced by a pipeline or build.</summary>
 public class DevOpsArtifact
 {
     public int Id { get; set; }
@@ -11,6 +12,7 @@ public class DevOpsArtifact
     public DateTime CreatedOn { get; set; }
 }
 
+/// <summary>Build summary returned by the builds list API.</summary>
 public class DevOpsBuild
 {
     public int Id { get; set; }

@@ -1,5 +1,6 @@
 namespace DevopsMvcApp.Models.DevOps;
 
+/// <summary>Git repository returned from the Azure DevOps repositories API.</summary>
 public class DevOpsRepository
 {
     public string Id { get; set; } = string.Empty;
@@ -10,6 +11,7 @@ public class DevOpsRepository
     public string WebUrl { get; set; } = string.Empty;
 }
 
+/// <summary>Form model for creating a new repository.</summary>
 public class CreateRepositoryRequest
 {
     public string Name { get; set; } = string.Empty;

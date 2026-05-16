@@ -1,5 +1,6 @@
 namespace DevopsMvcApp.Models.DevOps;
 
+/// <summary>YAML pipeline definition returned from the Azure DevOps pipelines API.</summary>
 public class DevOpsPipeline
 {
     public int Id { get; set; }
@@ -9,6 +10,7 @@ public class DevOpsPipeline
     public string WebUrl { get; set; } = string.Empty;
 }
 
+/// <summary>Form model for creating a new pipeline (repo, branch, YAML path).</summary>
 public class CreatePipelineRequest
 {
     public string Name { get; set; } = string.Empty;
@@ -17,6 +19,7 @@ public class CreatePipelineRequest
     public string YamlPath { get; set; } = "azure-pipelines.yml";
 }
 
+/// <summary>A single run/execution of a pipeline.</summary>
 public class PipelineRun
 {
     public int Id { get; set; }

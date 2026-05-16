@@ -239,7 +239,7 @@ public class DevOpsController : Controller
     public async Task<IActionResult> DeletePipeline(int id, string name)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
-        await _devOps.DeletePipelineAsync(id);
+        await _devOps.DeletePipelineAsync(id, name);
         TempData["Success"] = $"Pipeline '{name}' deleted.";
         return RedirectToAction(nameof(Pipelines));
     }
