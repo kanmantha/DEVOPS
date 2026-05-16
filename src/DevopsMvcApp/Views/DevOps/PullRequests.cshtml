@@ -67,6 +67,12 @@ else
                                 <a asp-action="ApprovePullRequest"
                                    asp-route-repoId="@selectedRepoId" asp-route-prId="@pr.PullRequestId"
                                    class="btn btn-sm btn-outline-success">Approve</a>
+                                <form asp-action="AbandonPullRequest" method="post" class="d-inline"
+                                      onsubmit="return confirm('Abandon PR #@pr.PullRequestId?')">
+                                    <input type="hidden" name="repoId" value="@selectedRepoId" />
+                                    <input type="hidden" name="prId" value="@pr.PullRequestId" />
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Abandon</button>
+                                </form>
                             </td>
                         </tr>
                     }

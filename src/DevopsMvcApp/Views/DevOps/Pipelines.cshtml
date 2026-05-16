@@ -44,6 +44,12 @@ else
                             <td class="text-end">
                                 <a asp-action="PipelineRuns" asp-route-id="@pipeline.Id" asp-route-name="@pipeline.Name" class="btn btn-sm btn-outline-info">Runs</a>
                                 <a asp-action="RunPipeline" asp-route-id="@pipeline.Id" class="btn btn-sm btn-outline-success">Run</a>
+                                <form asp-action="DeletePipeline" method="post" class="d-inline"
+                                      onsubmit="return confirm('Delete pipeline @pipeline.Name permanently?')">
+                                    <input type="hidden" name="id" value="@pipeline.Id" />
+                                    <input type="hidden" name="name" value="@pipeline.Name" />
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                                </form>
                             </td>
                         </tr>
                     }

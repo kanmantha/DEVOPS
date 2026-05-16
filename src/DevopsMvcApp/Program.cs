@@ -6,14 +6,27 @@ using DevopsMvcApp.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+// ──────────────────────────────────────────────
+// Database: SQLite via Entity Framework Core
+// ──────────────────────────────────────────────
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlite(connectionString));
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
-builder.Services.AddDataProtection()
-    .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(builder.Environment.ContentRootPath, "Keys")));
 
+// ──────────────────────────────────────────────
+// Data Protection: persist keys to disk so
+// CookieTempDataProvider doesn't warn on every restart
+// ──────────────────────────────────────────────
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(
+        Path.Combine(builder.Environment.ContentRootPath, "Keys")));
+
+// ──────────────────────────────────────────────
+// ASP.NET Core Identity with Individual accounts
+// Email confirmation disabled for dev convenience
+// ──────────────────────────────────────────────
 builder.Services.AddDefaultIdentity<IdentityUser>(options =>
     {
         options.SignIn.RequireConfirmedAccount = false;
@@ -22,7 +35,11 @@ builder.Services.AddDefaultIdentity<IdentityUser>(options =>
     .AddEntityFrameworkStores<ApplicationDbContext>();
 builder.Services.AddControllersWithViews();
 
-// DevOps & session
+// ──────────────────────────────────────────────
+// Azure DevOps integration
+// HttpClient is managed via IHttpClientFactory
+// Session stores connection credentials (PAT)
+// ──────────────────────────────────────────────
 builder.Services.AddHttpClient<DevOpsService>();
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession(options =>
@@ -34,7 +51,9 @@ builder.Services.AddSession(options =>
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// ──────────────────────────────────────────────
+// Middleware pipeline
+// ──────────────────────────────────────────────
 if (app.Environment.IsDevelopment())
 {
     app.UseMigrationsEndPoint();
@@ -42,14 +61,13 @@ if (app.Environment.IsDevelopment())
 else
 {
     app.UseExceptionHandler("/Home/Error");
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
 
 app.UseHttpsRedirection();
 app.UseRouting();
 
-app.UseSession();
+app.UseSession();          // Must come before UseAuthorization
 app.UseAuthorization();
 
 app.MapStaticAssets();

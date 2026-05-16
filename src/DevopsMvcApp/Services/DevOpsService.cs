@@ -6,11 +6,18 @@ using DevopsMvcApp.Models.DevOps;
 
 namespace DevopsMvcApp.Services;
 
+/// <summary>
+/// Service class that wraps the Azure DevOps REST API.
+/// All communication uses basic auth with a PAT stored in the user's session.
+/// Every method in this class calls one of the private HTTP helpers (Get/Post/Patch/Delete)
+/// which handle auth headers, error checking, and response parsing.
+/// </summary>
 public class DevOpsService
 {
     private readonly HttpClient _http;
     private DevOpsConnection? _connection;
 
+    // JSON serialization: camelCase naming + skip null properties
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -22,6 +29,9 @@ public class DevOpsService
         _http = http;
     }
 
+    // ── Connection management ──
+
+    /// <summary>Sets the PAT-based Basic auth header on every request.</summary>
     public void SetConnection(DevOpsConnection connection)
     {
         _connection = connection;
@@ -34,17 +44,22 @@ public class DevOpsService
     public string? Org => _connection?.Organization;
     public string? Project => _connection?.Project;
 
+    // ── URL builders ──
+    // Api()    → scoped to {org}/{project}
+    // OrgApi() → org-level (no project)
+    // VsmApi() → Release Management (separate subdomain)
     private string Api(string path) =>
         $"https://dev.azure.com/{_connection!.Organization}/{_connection.Project}/_apis/{path}?api-version=7.1";
-
     private string OrgApi(string path) =>
         $"https://dev.azure.com/{_connection!.Organization}/_apis/{path}?api-version=7.1";
-
     private string VsmApi(string path) =>
         $"https://vsrm.dev.azure.com/{_connection!.Organization}/{_connection.Project}/_apis/release/{path}?api-version=7.1";
 
-    // ────────────────────────────── Release Management (Blue-Green) ───────────
+    // ══════════════════════════════════════════
+    //  RELEASE MANAGEMENT (Blue-Green)
+    // ══════════════════════════════════════════
 
+    /// <summary>Fetches all release definitions from the release management API.</summary>
     public async Task<List<ReleaseDefinition>> GetReleaseDefinitionsAsync()
     {
         var json = await GetAsync(VsmApi("definitions"));
@@ -62,6 +77,7 @@ public class DevOpsService
         }).ToList();
     }
 
+    /// <summary>Fetches recent releases with environment status expansion.</summary>
     public async Task<List<ReleaseInfo>> GetReleasesAsync(int top = 10)
     {
         var json = await GetAsync(VsmApi("releases") + $"&$top={top}&$expand=environments");
@@ -90,6 +106,7 @@ public class DevOpsService
         }).ToList();
     }
 
+    /// <summary>Creates a new release from an existing release definition.</summary>
     public async Task<ReleaseInfo?> CreateReleaseAsync(int definitionId, string? description = null)
     {
         var body = JsonSerializer.Serialize(new
@@ -112,7 +129,9 @@ public class DevOpsService
         };
     }
 
-    // ── Simulated environments for Blue-Green demo ──
+    // ── Simulated Blue-Green deployment environments ──
+    // These are in-memory demo data — no live Azure App Service calls.
+    // SwapSlotsAsync / DeployToSlotAsync mutate the in-memory collection.
 
     public Task<List<DeploymentEnvironment>> GetDeploymentEnvironmentsAsync()
     {
@@ -161,6 +180,7 @@ public class DevOpsService
         return Task.FromResult(envs);
     }
 
+    /// <summary>Swaps Blue ↔ Green slots by exchanging versions and toggling active flag.</summary>
     public Task<DeploymentEnvironment> SwapSlotsAsync(string envName)
     {
         var envs = GetDeploymentEnvironmentsAsync().Result;
@@ -173,7 +193,6 @@ public class DevOpsService
         if (activeSlot == null || inactiveSlot == null)
             throw new InvalidOperationException("Need both Blue and Green slots to swap");
 
-        // Swap: deploy the inactive slot's version to active, then toggle
         var tempVersion = activeSlot.CurrentVersion;
         activeSlot.CurrentVersion = inactiveSlot.CurrentVersion;
         inactiveSlot.CurrentVersion = tempVersion;
@@ -192,6 +211,7 @@ public class DevOpsService
         return Task.FromResult(env);
     }
 
+    /// <summary>Simulates deploying a version to a specific slot.</summary>
     public Task<DeploymentRecord> DeployToSlotAsync(string envName, string slotLabel, string version)
     {
         var record = new DeploymentRecord
@@ -206,7 +226,6 @@ public class DevOpsService
             BuildId = Random.Shared.Next(100, 999)
         };
 
-        // Simulate deployment
         var envs = GetDeploymentEnvironmentsAsync().Result;
         var env = envs.FirstOrDefault(e => e.Name == envName);
         var slot = env?.Slots.FirstOrDefault(s => s.Label == slotLabel);
@@ -222,8 +241,11 @@ public class DevOpsService
         return Task.FromResult(record);
     }
 
-    // ────────────────────────────── Repositories ──────────────────────────────
+    // ══════════════════════════════════════════
+    //  REPOSITORIES
+    // ══════════════════════════════════════════
 
+    /// <summary>Lists all Git repositories in the connected project.</summary>
     public async Task<List<DevOpsRepository>> GetRepositoriesAsync()
     {
         var json = await GetAsync(Api("git/repositories"));
@@ -239,34 +261,68 @@ public class DevOpsService
         }).ToList();
     }
 
+    /// <summary>Creates a new empty Git repo, then sets its default branch to "main".</summary>
     public async Task<DevOpsRepository?> CreateRepositoryAsync(string name)
     {
         var body = JsonSerializer.Serialize(new { name }, JsonOpts);
         var json = await PostAsync(Api("git/repositories"), body);
         var r = JsonDocument.Parse(json).RootElement;
+        var repoId = r.GetProperty("id").GetString()!;
+        // Explicitly set default branch — Azure DevOps may default to "master"
+        await PatchAsync(Api($"git/repositories/{repoId}"),
+            JsonSerializer.Serialize(new { defaultBranch = "refs/heads/main" }, JsonOpts));
         return new DevOpsRepository
         {
-            Id = r.GetProperty("id").GetString()!,
+            Id = repoId,
             Name = r.GetProperty("name").GetString()!,
             RemoteUrl = r.GetProperty("remoteUrl").GetString()!,
+            DefaultBranch = "main",
             WebUrl = r.GetProperty("webUrl").GetString()!
         };
     }
 
+    /// <summary>Permanently deletes a repository by ID.</summary>
     public async Task<bool> DeleteRepositoryAsync(string repoId)
     {
         await DeleteAsync(Api($"git/repositories/{repoId}"));
         return true;
     }
 
-    // ────────────────────────────── Pipeline files (commit YAML) ──────────────────────────────
+    /// <summary>Renames an existing repository.</summary>
+    public async Task<DevOpsRepository?> RenameRepositoryAsync(string repoId, string newName)
+    {
+        var body = JsonSerializer.Serialize(new { name = newName }, JsonOpts);
+        var json = await PatchAsync(Api($"git/repositories/{repoId}"), body);
+        var r = JsonDocument.Parse(json).RootElement;
+        return new DevOpsRepository
+        {
+            Id = r.GetProperty("id").GetString()!,
+            Name = r.GetProperty("name").GetString()!,
+            RemoteUrl = r.GetProperty("remoteUrl").GetString()!,
+            DefaultBranch = r.TryGetProperty("defaultBranch", out var b) ? b.GetString() ?? "main" : "main",
+            WebUrl = r.GetProperty("webUrl").GetString()!
+        };
+    }
 
+    /// <summary>Updates the default branch of a repository.</summary>
+    public async Task SetRepoDefaultBranchAsync(string repoId, string branch)
+    {
+        var body = JsonSerializer.Serialize(new { defaultBranch = $"refs/heads/{branch}" }, JsonOpts);
+        await PatchAsync(Api($"git/repositories/{repoId}"), body);
+    }
+
+    // ══════════════════════════════════════════
+    //  FILE OPERATIONS (commit via push API)
+    // ══════════════════════════════════════════
+
+    /// <summary>Commits a new file to a branch via the Azure DevOps Push API.</summary>
     public async Task CommitFileAsync(string repoId, string branch, string path, string content, string comment)
     {
-        // Get repo info for push
-        var refJson = await PostAsync(Api($"git/repositories/{repoId}/refs"), JsonSerializer.Serialize(new
+        var oldObjectId = await GetBranchTipAsync(repoId, branch);
+        var normalizedPath = path.StartsWith("/") ? path : $"/{path}";
+        var body = JsonSerializer.Serialize(new
         {
-            refUpdates = new[] { new { name = $"refs/heads/{branch}", oldObjectId = "0000000000000000000000000000000000000000" } },
+            refUpdates = new[] { new { name = $"refs/heads/{branch}", oldObjectId } },
             commits = new[]
             {
                 new
@@ -277,17 +333,148 @@ public class DevOpsService
                         new
                         {
                             changeType = "add",
-                            item = new { path },
+                            item = new { path = normalizedPath },
                             newContent = new { content, contentType = "rawtext" }
                         }
                     }
                 }
             }
-        }, JsonOpts));
+        }, JsonOpts);
+        await PostAsync(Api($"git/repositories/{repoId}/pushes"), body);
     }
 
-    // ────────────────────────────── Pipelines ──────────────────────────────
+    /// <summary>Edits existing file content via a push with changeType "edit".</summary>
+    public async Task EditFileAsync(string repoId, string branch, string path, string content, string comment)
+    {
+        var oldObjectId = await GetBranchTipAsync(repoId, branch);
+        var normalizedPath = path.StartsWith("/") ? path : $"/{path}";
+        var body = JsonSerializer.Serialize(new
+        {
+            refUpdates = new[] { new { name = $"refs/heads/{branch}", oldObjectId } },
+            commits = new[]
+            {
+                new
+                {
+                    comment,
+                    changes = new[]
+                    {
+                        new
+                        {
+                            changeType = "edit",
+                            item = new { path = normalizedPath },
+                            newContent = new { content, contentType = "rawtext" }
+                        }
+                    }
+                }
+            }
+        }, JsonOpts);
+        await PostAsync(Api($"git/repositories/{repoId}/pushes"), body);
+    }
 
+    /// <summary>Deletes a file via a push with changeType "delete".</summary>
+    public async Task DeleteFileAsync(string repoId, string branch, string path, string comment)
+    {
+        var oldObjectId = await GetBranchTipAsync(repoId, branch);
+        var normalizedPath = path.StartsWith("/") ? path : $"/{path}";
+        var body = JsonSerializer.Serialize(new
+        {
+            refUpdates = new[] { new { name = $"refs/heads/{branch}", oldObjectId } },
+            commits = new[]
+            {
+                new
+                {
+                    comment,
+                    changes = new[]
+                    {
+                        new
+                        {
+                            changeType = "delete",
+                            item = new { path = normalizedPath }
+                        }
+                    }
+                }
+            }
+        }, JsonOpts);
+        await PostAsync(Api($"git/repositories/{repoId}/pushes"), body);
+    }
+
+    /// <summary>Delegates to CommitFileAsync (backward compatibility).</summary>
+    public async Task CommitFileToBranchAsync(string repoId, string branch, string filePath, string content, string comment)
+    {
+        await CommitFileAsync(repoId, branch, filePath, content, comment);
+    }
+
+    /// <summary>Gets the commit ID at the tip of a branch (or all-zeros if new).</summary>
+    private async Task<string> GetBranchTipAsync(string repoId, string branch)
+    {
+        try
+        {
+            var refsJson = await GetAsync(Api($"git/repositories/{repoId}/refs?filter=heads/{branch}"));
+            var refsDoc = JsonDocument.Parse(refsJson);
+            if (refsDoc.RootElement.TryGetProperty("value", out var refs) && refs.GetArrayLength() > 0)
+                return refs[0].GetProperty("objectId").GetString()!;
+        }
+        catch { }
+        return "0000000000000000000000000000000000000000";
+    }
+
+    // ══════════════════════════════════════════
+    //  BRANCHES
+    // ══════════════════════════════════════════
+
+    /// <summary>Creates a new branch from a source branch or commit.</summary>
+    public async Task CreateBranchAsync(string repoId, string branchName, string? sourceBranchOrCommit = null)
+    {
+        var newRef = $"refs/heads/{branchName}";
+        if (!string.IsNullOrEmpty(sourceBranchOrCommit))
+        {
+            string sourceObjectId;
+            try
+            {
+                var refsJson = await GetAsync(Api($"git/repositories/{repoId}/refs?filter=heads/{sourceBranchOrCommit}"));
+                var refsDoc = JsonDocument.Parse(refsJson);
+                if (refsDoc.RootElement.TryGetProperty("value", out var refs) && refs.GetArrayLength() > 0)
+                    sourceObjectId = refs[0].GetProperty("objectId").GetString()!;
+                else
+                    sourceObjectId = sourceBranchOrCommit;
+            }
+            catch
+            {
+                sourceObjectId = sourceBranchOrCommit;
+            }
+            var body = JsonSerializer.Serialize(new[]
+            {
+                new { name = newRef, oldObjectId = "0000000000000000000000000000000000000000", newObjectId = sourceObjectId }
+            }, JsonOpts);
+            await PostAsync(Api($"git/repositories/{repoId}/refs"), body);
+        }
+        else
+        {
+            var defaultTip = await GetBranchTipAsync(repoId, "main");
+            var body = JsonSerializer.Serialize(new[]
+            {
+                new { name = newRef, oldObjectId = "0000000000000000000000000000000000000000", newObjectId = defaultTip }
+            }, JsonOpts);
+            await PostAsync(Api($"git/repositories/{repoId}/refs"), body);
+        }
+    }
+
+    /// <summary>Deletes a branch by setting its ref to all-zeros.</summary>
+    public async Task DeleteBranchAsync(string repoId, string branchName)
+    {
+        var oldObjectId = await GetBranchTipAsync(repoId, branchName);
+        var body = JsonSerializer.Serialize(new[]
+        {
+            new { name = $"refs/heads/{branchName}", oldObjectId, newObjectId = "0000000000000000000000000000000000000000" }
+        }, JsonOpts);
+        await PostAsync(Api($"git/repositories/{repoId}/refs"), body);
+    }
+
+    // ══════════════════════════════════════════
+    //  PIPELINES (YAML-based)
+    // ══════════════════════════════════════════
+
+    /// <summary>Lists all YAML pipelines in the project.</summary>
     public async Task<List<DevOpsPipeline>> GetPipelinesAsync()
     {
         var json = await GetAsync(Api("pipelines"));
@@ -302,6 +489,8 @@ public class DevOpsService
         }).ToList();
     }
 
+    /// <summary>Creates a pipeline definition from a CreatePipelineRequest (which includes
+    /// the repo, YAML path, and default branch).</summary>
     public async Task<DevOpsPipeline?> CreatePipelineAsync(CreatePipelineRequest req)
     {
         var body = JsonSerializer.Serialize(new
@@ -329,6 +518,7 @@ public class DevOpsService
         };
     }
 
+    /// <summary>Fetches run history for a specific pipeline.</summary>
     public async Task<List<PipelineRun>> GetPipelineRunsAsync(int pipelineId)
     {
         var json = await GetAsync(Api($"pipelines/{pipelineId}/runs"));
@@ -343,6 +533,7 @@ public class DevOpsService
         }).ToList();
     }
 
+    /// <summary>Queues a new pipeline run.</summary>
     public async Task<PipelineRun?> RunPipelineAsync(int pipelineId)
     {
         var body = JsonSerializer.Serialize(new { }, JsonOpts);
@@ -357,8 +548,17 @@ public class DevOpsService
         };
     }
 
-    // ────────────────────────────── Pull Requests ──────────────────────────────
+    /// <summary>Permanently deletes a pipeline definition.</summary>
+    public async Task DeletePipelineAsync(int pipelineId)
+    {
+        await DeleteAsync(Api($"pipelines/{pipelineId}"));
+    }
 
+    // ══════════════════════════════════════════
+    //  PULL REQUESTS
+    // ══════════════════════════════════════════
+
+    /// <summary>Lists PRs for a repo, optionally filtered by status (active/completed/abandoned).</summary>
     public async Task<List<DevOpsPullRequest>> GetPullRequestsAsync(string repoId, string? status = "active")
     {
         var url = Api($"git/repositories/{repoId}/pullrequests") + (status != null ? $"&searchCriteria.status={status}" : "");
@@ -378,6 +578,7 @@ public class DevOpsService
         }).ToList();
     }
 
+    /// <summary>Creates a new pull request.</summary>
     public async Task<DevOpsPullRequest?> CreatePullRequestAsync(CreatePullRequestRequest req)
     {
         var body = JsonSerializer.Serialize(new
@@ -398,6 +599,7 @@ public class DevOpsService
         };
     }
 
+    /// <summary>Updates PR status (completed / abandoned).</summary>
     public async Task<DevOpsPullRequest?> UpdatePullRequestStatusAsync(string repoId, int prId, string status)
     {
         var body = JsonSerializer.Serialize(new
@@ -415,6 +617,7 @@ public class DevOpsService
         };
     }
 
+    /// <summary>Fetches all comment threads for a PR.</summary>
     public async Task<List<PullRequestComment>> GetPullRequestCommentsAsync(string repoId, int prId)
     {
         var json = await GetAsync(Api($"git/repositories/{repoId}/pullrequests/{prId}/threads"));
@@ -430,8 +633,28 @@ public class DevOpsService
             }).ToList();
     }
 
-    // ────────────────────────────── Builds & Artifacts ──────────────────────────────
+    /// <summary>Abandons a PR (delegates to UpdatePullRequestStatusAsync).</summary>
+    public async Task AbandonPullRequestAsync(string repoId, int prId)
+    {
+        await UpdatePullRequestStatusAsync(repoId, prId, "abandoned");
+    }
 
+    /// <summary>Posts a new comment thread on a PR.</summary>
+    public async Task AddPullRequestCommentAsync(string repoId, int prId, string content)
+    {
+        var body = JsonSerializer.Serialize(new
+        {
+            comments = new[] { new { content, commentType = "text" } },
+            status = "active"
+        }, JsonOpts);
+        await PostAsync(Api($"git/repositories/{repoId}/pullrequests/{prId}/threads"), body);
+    }
+
+    // ══════════════════════════════════════════
+    //  BUILDS & ARTIFACTS
+    // ══════════════════════════════════════════
+
+    /// <summary>Lists recent builds, optionally filtered by pipeline.</summary>
     public async Task<List<DevOpsBuild>> GetBuildsAsync(int? pipelineId = null, int top = 10)
     {
         var url = Api("build/builds") + $"&$top={top}";
@@ -449,6 +672,7 @@ public class DevOpsService
         }).ToList();
     }
 
+    /// <summary>Lists artifacts produced by a build.</summary>
     public async Task<List<DevOpsArtifact>> GetArtifactsAsync(int buildId)
     {
         var json = await GetAsync(Api($"build/builds/{buildId}/artifacts"));
@@ -465,6 +689,7 @@ public class DevOpsService
         }).ToList();
     }
 
+    /// <summary>Proxies an artifact download through the server (keeps PAT secure).</summary>
     public async Task<Stream> DownloadArtifactAsync(string downloadUrl)
     {
         var resp = await _http.GetAsync(downloadUrl);
@@ -472,32 +697,155 @@ public class DevOpsService
         return await resp.Content.ReadAsStreamAsync();
     }
 
+    // ══════════════════════════════════════════
+    //  DASHBOARD (aggregated stats)
+    // ══════════════════════════════════════════
+
+    /// <summary>Fetches all data needed for the DevOps dashboard in parallel.
+    /// Returns repository counts, pipeline stats, build stats, PR breakdowns,
+    /// branch/commit counts, and a unified recent activity feed.</summary>
     public async Task<DevOpsDashboard> GetDashboardAsync()
     {
         var dashboard = new DevOpsDashboard { Connection = _connection! };
         try
         {
-            var tasks = new Task[]
+            var reposTask = GetRepositoriesAsync();
+            var pipelinesTask = GetPipelinesAsync();
+            var buildsTask = GetBuildsAsync(null, 50);
+            var releasesTask = GetReleasesAsync(10);
+            var releaseDefsTask = GetReleaseDefinitionsAsync();
+
+            await Task.WhenAll(reposTask, pipelinesTask, buildsTask, releasesTask, releaseDefsTask);
+
+            var repos = reposTask.Result;
+            var pipelines = pipelinesTask.Result;
+            var builds = buildsTask.Result;
+            var releases = releasesTask.Result;
+            var releaseDefs = releaseDefsTask.Result;
+
+            dashboard.Repositories = repos;
+            dashboard.Pipelines = pipelines;
+            dashboard.RecentBuilds = builds;
+
+            // PRs across repos (fetch all statuses from first 3 repos)
+            var allPrs = new List<DevOpsPullRequest>();
+            if (repos.Count > 0)
             {
-                Task.Run(async () => dashboard.Repositories = await GetRepositoriesAsync()),
-                Task.Run(async () => dashboard.Pipelines = await GetPipelinesAsync()),
-                Task.Run(async () => dashboard.RecentBuilds = await GetBuildsAsync()),
-                Task.Run(async () =>
+                var prTasks = repos.Take(3).Select(r => GetPullRequestsAsync(r.Id, null));
+                await Task.WhenAll(prTasks);
+                allPrs = prTasks.SelectMany(t => t.Result).ToList();
+                dashboard.PullRequests = allPrs.Where(p => p.Status == "active").ToList();
+            }
+
+            // Branch & commit counts + recent activity entries
+            int totalBranches = 0, totalCommits = 0;
+            var recentActivity = new List<DashboardActivity>();
+            foreach (var repo in repos.Take(3))
+            {
+                try
                 {
-                    try
-                    {
-                        var repos = await GetRepositoriesAsync();
-                        if (repos.Count > 0)
+                    var branches = await GetBranchesAsync(repo.Id);
+                    totalBranches += branches.Count;
+                    var commits = await GetCommitHistoryAsync(repo.Id, 5);
+                    totalCommits += commits.Count;
+                    foreach (var c in commits.Take(3))
+                        recentActivity.Add(new DashboardActivity
                         {
-                            var prTasks = repos.Take(3).Select(r => GetPullRequestsAsync(r.Id));
-                            var prs = await Task.WhenAll(prTasks);
-                            dashboard.PullRequests = prs.SelectMany(p => p).ToList();
-                        }
-                    }
-                    catch { /* skip PRs for dashboard */ }
-                })
+                            Type = "commit",
+                            Title = c.Comment,
+                            Subtitle = $"{repo.Name} · {c.AuthorName}",
+                            Url = c.RemoteUrl,
+                            Timestamp = c.CommitDate,
+                            Icon = "🔄",
+                            Color = "#2563eb"
+                        });
+                }
+                catch { }
+            }
+
+            // Build stats
+            int succeeded = 0, failed = 0, inProgress = 0;
+            foreach (var b in builds)
+            {
+                if (b.Result == "succeeded") succeeded++;
+                else if (b.Result == "failed") failed++;
+                else inProgress++;
+            }
+            foreach (var b in builds.Take(5))
+                recentActivity.Add(new DashboardActivity
+                {
+                    Type = "build",
+                    Title = b.BuildNumber,
+                    Subtitle = b.Result ?? "In Progress",
+                    Url = b.WebUrl,
+                    Timestamp = b.QueueTime,
+                    Icon = b.Result == "succeeded" ? "✅" : b.Result == "failed" ? "❌" : "⏳",
+                    Color = b.Result == "succeeded" ? "#059669" : b.Result == "failed" ? "#dc2626" : "#d97706"
+                });
+
+            // PR activity
+            foreach (var pr in dashboard.PullRequests.Take(5))
+                recentActivity.Add(new DashboardActivity
+                {
+                    Type = "pr",
+                    Title = pr.Title,
+                    Subtitle = $"#{pr.PullRequestId} by {pr.CreatedBy}",
+                    Url = pr.WebUrl,
+                    Timestamp = pr.CreationDate,
+                    Icon = "🔄",
+                    Color = "#7c3aed"
+                });
+
+            // Release activity
+            foreach (var r in releases.Take(5))
+                recentActivity.Add(new DashboardActivity
+                {
+                    Type = "release",
+                    Title = r.Name,
+                    Subtitle = r.Status,
+                    Url = r.WebUrl,
+                    Timestamp = r.CreatedOn,
+                    Icon = "🏷️",
+                    Color = "#0891b2"
+                });
+
+            // Active pipeline runs
+            int activeRuns = 0;
+            foreach (var p in pipelines.Take(5))
+            {
+                try
+                {
+                    var runs = await GetPipelineRunsAsync(p.Id);
+                    activeRuns += runs.Count(r => r.State == "inProgress");
+                }
+                catch { }
+            }
+
+            // PR status breakdown
+            int completedPrs = allPrs.Count(p => p.Status == "completed");
+            int abandonedPrs = allPrs.Count(p => p.Status == "abandoned");
+            int activePrs = allPrs.Count(p => p.Status == "active");
+
+            dashboard.Stats = new DashboardStats
+            {
+                TotalRepos = repos.Count,
+                TotalPipelines = pipelines.Count,
+                ActivePrs = activePrs,
+                CompletedPrs = completedPrs,
+                AbandonedPrs = abandonedPrs,
+                TotalBuilds = builds.Count,
+                SucceededBuilds = succeeded,
+                FailedBuilds = failed,
+                InProgressBuilds = inProgress,
+                TotalBranches = totalBranches,
+                TotalCommits = totalCommits,
+                TotalReleases = releases.Count,
+                TotalReleaseDefs = releaseDefs.Count,
+                ActivePipelineRuns = activeRuns
             };
-            await Task.WhenAll(tasks);
+
+            dashboard.RecentActivity = recentActivity
+                .OrderByDescending(a => a.Timestamp).Take(15).ToList();
         }
         catch (Exception ex)
         {
@@ -506,8 +854,11 @@ public class DevOpsService
         return dashboard;
     }
 
-    // ────────────────────────────── File Browser ──────────────────────────────
+    // ══════════════════════════════════════════
+    //  FILE BROWSER
+    // ══════════════════════════════════════════
 
+    /// <summary>Lists files/folders at a given path in a repository branch (one level deep).</summary>
     public async Task<List<RepoFile>> GetRepoFilesAsync(string repoId, string? path = "", string? branch = "main")
     {
         var url = Api($"git/repositories/{repoId}/items?scopePath={Uri.EscapeDataString(path ?? "")}&recursionLevel=OneLevel&includeContentMetadata=true") +
@@ -524,6 +875,7 @@ public class DevOpsService
         }).OrderByDescending(f => f.IsFolder).ThenBy(f => f.Name).ToList();
     }
 
+    /// <summary>Gets the full content of a single file, including base64 or raw encoding.</summary>
     public async Task<FileContent> GetFileContentAsync(string repoId, string path, string? branch = "main")
     {
         var url = Api($"git/repositories/{repoId}/items?path={Uri.EscapeDataString(path)}") +
@@ -541,33 +893,11 @@ public class DevOpsService
         };
     }
 
-    public async Task CommitFileToBranchAsync(string repoId, string branch, string filePath, string content, string comment)
-    {
-        var refUrl = Api($"git/repositories/{repoId}/refs");
-        var refJson = await PostAsync(refUrl, JsonSerializer.Serialize(new
-        {
-            refUpdates = new[] { new { name = $"refs/heads/{branch}", oldObjectId = "0000000000000000000000000000000000000000" } },
-            commits = new[]
-            {
-                new
-                {
-                    comment,
-                    changes = new[]
-                    {
-                        new
-                        {
-                            changeType = "add",
-                            item = new { path = filePath },
-                            newContent = new { content, contentType = "rawtext" }
-                        }
-                    }
-                }
-            }
-        }, JsonOpts));
-    }
+    // ══════════════════════════════════════════
+    //  COMMITS
+    // ══════════════════════════════════════════
 
-    // ────────────────────────────── Commits ──────────────────────────────
-
+    /// <summary>Fetches recent commit history for a repository.</summary>
     public async Task<List<CommitInfo>> GetCommitHistoryAsync(string repoId, int top = 20)
     {
         var json = await GetAsync(Api($"git/repositories/{repoId}/commits?$top={top}"));
@@ -583,8 +913,11 @@ public class DevOpsService
         }).ToList();
     }
 
-    // ────────────────────────────── Branches ──────────────────────────────
+    // ══════════════════════════════════════════
+    //  BRANCHES (list)
+    // ══════════════════════════════════════════
 
+    /// <summary>Lists all branches in a repository (refs filter=heads).</summary>
     public async Task<List<BranchInfo>> GetBranchesAsync(string repoId)
     {
         var json = await GetAsync(Api($"git/repositories/{repoId}/refs?filter=heads"));
@@ -598,22 +931,29 @@ public class DevOpsService
         }).ToList();
     }
 
-    // ────────────────────────────── Cancel Pipeline Run ──────────────────────────────
+    // ══════════════════════════════════════════
+    //  CANCEL OPERATIONS
+    // ══════════════════════════════════════════
 
+    /// <summary>Cancels a pipeline run by setting state to "cancelling".</summary>
     public async Task CancelPipelineRunAsync(int pipelineId, int runId)
     {
         var body = JsonSerializer.Serialize(new { state = "cancelling" }, JsonOpts);
         await PatchAsync(Api($"pipelines/{pipelineId}/runs/{runId}"), body);
     }
 
+    /// <summary>Cancels a build by setting status to "cancelling".</summary>
     public async Task CancelBuildAsync(int buildId)
     {
         var body = JsonSerializer.Serialize(new { status = "cancelling" }, JsonOpts);
         await PatchAsync(Api($"build/builds/{buildId}"), body);
     }
 
-    // ────────────────────────────── Build Timeline & Logs ──────────────────────────────
+    // ══════════════════════════════════════════
+    //  BUILD TIMELINE & LOGS
+    // ══════════════════════════════════════════
 
+    /// <summary>Gets the timeline (step-by-step) for a completed build.</summary>
     public async Task<List<BuildTimelineRecord>> GetBuildTimelineAsync(int buildId)
     {
         var json = await GetAsync(Api($"build/builds/{buildId}/timeline"));
@@ -632,22 +972,10 @@ public class DevOpsService
                 PercentComplete = r.TryGetProperty("percentComplete", out var pc) ? pc.GetDouble() : null
             }).ToList();
 
-        // Build parent-child hierarchy
-        var lookup = all.ToDictionary(r => r.Id);
-        var roots = new List<BuildTimelineRecord>();
-        foreach (var r in all)
-        {
-            // Records without parents (or Job/Phase type) are roots
-            if (r.Type is "Job" or "Phase" or "Task")
-            {
-                if (r.Type == "Task") roots.Add(r);
-                else roots.Add(r);
-            }
-        }
-        // Return only top-level records (jobs/phases) — nested details not needed for simple view
         return all.Where(r => r.Type is "Job" or "Phase").ToList();
     }
 
+    /// <summary>Gets the raw log text for a specific build step.</summary>
     public async Task<List<BuildLogEntry>> GetBuildLogAsync(int buildId, int logId)
     {
         var url = Api($"build/builds/{buildId}/logs/{logId}");
@@ -656,7 +984,84 @@ public class DevOpsService
         return lines.Select((line, i) => new BuildLogEntry { LineNumber = i + 1, Text = line.TrimEnd('\r') }).ToList();
     }
 
-    // ────────────────────────────── HTTP helpers ──────────────────────────────
+    // ══════════════════════════════════════════
+    //  RELEASE DEFINITION CRUD
+    // ══════════════════════════════════════════
+
+    /// <summary>Creates a minimal release definition with Dev+Production environments.</summary>
+    public async Task<ReleaseDefinition?> CreateReleaseDefinitionAsync(string name, string? description = null)
+    {
+        var body = JsonSerializer.Serialize(new
+        {
+            name,
+            description = description ?? $"Release definition for {name}",
+            environments = new object[]
+            {
+                new
+                {
+                    name = "Dev",
+                    rank = 1,
+                    owner = new { displayName = "Portal User" },
+                    conditions = new object[]
+                    {
+                        new { conditionType = "event", name = "ReleaseStarted", value = "" }
+                    }
+                },
+                new
+                {
+                    name = "Production",
+                    rank = 2,
+                    owner = new { displayName = "Portal User" },
+                    conditions = new object[]
+                    {
+                        new { conditionType = "event", name = "EnvironmentSucceeded", value = "" }
+                    },
+                    dependsOn = Array.Empty<object>()
+                }
+            },
+            artifacts = new[]
+            {
+                new
+                {
+                    type = "Build",
+                    alias = "_ProjectBuild",
+                    definitionReference = new
+                    {
+                        project = new { id = _connection!.Project, name = _connection!.Project },
+                        @default = new { isBuild = true, id = "", name = "" },
+                        branch = new { id = "main", name = "main" },
+                        pipelineTrigger = new { isPipelineTrigger = false }
+                    }
+                }
+            },
+            triggers = Array.Empty<object>(),
+            variableGroups = Array.Empty<object>(),
+            variables = new { }
+        }, JsonOpts);
+        var json = await PostAsync(VsmApi("definitions"), body);
+        var d = JsonDocument.Parse(json).RootElement;
+        return new ReleaseDefinition
+        {
+            Id = d.GetProperty("id").GetInt32(),
+            Name = d.GetProperty("name").GetString()!,
+            Description = d.TryGetProperty("description", out var desc) ? desc.GetString() : null,
+            Revision = d.GetProperty("revision").GetInt32(),
+            WebUrl = d.TryGetProperty("_links", out var links) && links.TryGetProperty("web", out var web)
+                ? web.GetProperty("href").GetString()! : ""
+        };
+    }
+
+    /// <summary>Deletes a release definition by ID.</summary>
+    public async Task DeleteReleaseDefinitionAsync(int definitionId)
+    {
+        await DeleteAsync(VsmApi($"definitions/{definitionId}"));
+    }
+
+    // ══════════════════════════════════════════
+    //  HTTP HELPERS
+    //  Every call includes Basic auth + JSON content-type.
+    //  Non-2xx responses throw HttpRequestException with the response body.
+    // ══════════════════════════════════════════
 
     private async Task<string> GetAsync(string url)
     {

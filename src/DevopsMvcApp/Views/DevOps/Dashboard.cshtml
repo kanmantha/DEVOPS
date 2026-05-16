@@ -2,6 +2,7 @@
 
 @{
     ViewData["Title"] = "DevOps Dashboard";
+    var stats = Model.Stats;
 }
 
 <div class="page-header">
@@ -20,64 +21,177 @@
     <div class="alert alert-danger">@Model.ErrorMessage</div>
 }
 
+@* ── Top Stat Cards ── *@
 <div class="row g-3 mb-4">
     <div class="col fade-in fade-in-delay-1">
-        <div class="card stat-card bg-devops-repos">
+        <div class="card stat-card" style="background:linear-gradient(135deg,#2563eb,#3b82f6);">
             <div class="card-body">
                 <div class="stat-icon">📁</div>
                 <p class="stat-label">Repositories</p>
-                <div class="stat-number">@Model.Repositories.Count</div>
+                <div class="stat-number">@stats.TotalRepos</div>
+                <div class="stat-sub"><strong>@stats.TotalBranches</strong> branches · <strong>@stats.TotalCommits</strong> recent commits</div>
                 <a asp-action="Repositories" class="stat-link">Manage &rarr;</a>
             </div>
         </div>
     </div>
     <div class="col fade-in fade-in-delay-2">
-        <div class="card stat-card bg-devops-pipelines">
+        <div class="card stat-card" style="background:linear-gradient(135deg,#7c3aed,#a855f7);">
             <div class="card-body">
                 <div class="stat-icon">⚡</div>
                 <p class="stat-label">Pipelines</p>
-                <div class="stat-number">@Model.Pipelines.Count</div>
+                <div class="stat-number">@stats.TotalPipelines</div>
+                <div class="stat-sub"><strong>@stats.ActivePipelineRuns</strong> active runs</div>
                 <a asp-action="Pipelines" class="stat-link">Manage &rarr;</a>
             </div>
         </div>
     </div>
     <div class="col fade-in fade-in-delay-3">
-        <div class="card stat-card bg-devops-prs">
+        <div class="card stat-card" style="background:linear-gradient(135deg,#0891b2,#06b6d4);">
             <div class="card-body">
                 <div class="stat-icon">🔄</div>
-                <p class="stat-label">Active PRs</p>
-                <div class="stat-number">@Model.PullRequests.Count</div>
+                <p class="stat-label">Pull Requests</p>
+                <div class="stat-number">@stats.ActivePrs</div>
+                <div class="stat-sub"><strong>@stats.CompletedPrs</strong> completed · <strong>@stats.AbandonedPrs</strong> abandoned</div>
                 <a asp-action="PullRequests" class="stat-link">View &rarr;</a>
             </div>
         </div>
     </div>
-    <div class="col">
-        <div class="card stat-card bg-devops-builds">
+    <div class="col fade-in fade-in-delay-4">
+        <div class="card stat-card" style="background:linear-gradient(135deg,#059669,#10b981);">
             <div class="card-body">
                 <div class="stat-icon">📦</div>
-                <p class="stat-label">Recent Builds</p>
-                <div class="stat-number">@Model.RecentBuilds.Count</div>
+                <p class="stat-label">Builds</p>
+                <div class="stat-number">@stats.TotalBuilds</div>
+                <div class="stat-sub"><strong>@stats.SucceededBuilds</strong> passed · <strong>@stats.FailedBuilds</strong> failed</div>
                 <a asp-action="Builds" class="stat-link">View &rarr;</a>
             </div>
         </div>
     </div>
-    <div class="col">
-        <div class="card stat-card" style="background:linear-gradient(135deg,#7c3aed,#a855f7);">
+    <div class="col fade-in fade-in-delay-5">
+        <div class="card stat-card" style="background:linear-gradient(135deg,#d97706,#f59e0b);">
             <div class="card-body">
-                <div class="stat-icon">🚀</div>
-                <p class="stat-label">Deployments</p>
-                <div class="stat-number">BG</div>
-                <a asp-action="Deployments" class="stat-link">Manage &rarr;</a>
+                <div class="stat-icon">🏷️</div>
+                <p class="stat-label">Releases</p>
+                <div class="stat-number">@stats.TotalReleases</div>
+                <div class="stat-sub"><strong>@stats.TotalReleaseDefs</strong> definitions</div>
+                <a asp-action="Releases" class="stat-link">View &rarr;</a>
             </div>
         </div>
     </div>
 </div>
 
+@* ── Charts Row ── *@
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header"><span class="fw-bold">Build Success Rate</span></div>
+            <div class="card-body text-center">
+                @if (stats.TotalBuilds > 0)
+                {
+                    <div style="position:relative;width:140px;height:140px;margin:0 auto 1rem;">
+                        <svg viewBox="0 0 36 36" style="transform:rotate(-90deg);width:140px;height:140px;">
+                            <circle cx="18" cy="18" r="15.5" fill="none" stroke="#e5e7eb" stroke-width="3" />
+                            <circle cx="18" cy="18" r="15.5" fill="none" stroke="#059669" stroke-width="3"
+                                    stroke-dasharray="@(stats.BuildSuccessRate) @(100 - stats.BuildSuccessRate)"
+                                    stroke-linecap="round" />
+                        </svg>
+                        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:1.8rem;font-weight:800;color:#059669;">
+                            @stats.BuildSuccessRate%
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-center gap-3 text-center" style="font-size:0.85rem;">
+                        <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#059669;"></span> @stats.SucceededBuilds succeeded</div>
+                        <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#dc2626;"></span> @stats.FailedBuilds failed</div>
+                    </div>
+                }
+                else
+                {
+                    <p class="text-muted mb-0 py-4">No build data yet.</p>
+                }
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header"><span class="fw-bold">PR Pipeline</span></div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between mb-1">
+                    <span>Active</span>
+                    <span class="fw-bold">@stats.ActivePrs</span>
+                </div>
+                <div class="progress mb-3" style="height:8px;border-radius:4px;">
+                    @{
+                        var prTotal = stats.ActivePrs + stats.CompletedPrs + stats.AbandonedPrs;
+                        var activePct = prTotal > 0 ? (double)stats.ActivePrs / prTotal * 100 : 0;
+                        var completedPct = prTotal > 0 ? (double)stats.CompletedPrs / prTotal * 100 : 0;
+                        var abandonedPct = prTotal > 0 ? (double)stats.AbandonedPrs / prTotal * 100 : 0;
+                    }
+                    <div class="progress-bar bg-primary" style="width:@(activePct)%">@(activePct > 5 ? $"{stats.ActivePrs}" : "")</div>
+                    <div class="progress-bar bg-success" style="width:@(completedPct)%">@(completedPct > 5 ? $"{stats.CompletedPrs}" : "")</div>
+                    <div class="progress-bar bg-danger" style="width:@(abandonedPct)%">@(abandonedPct > 5 ? $"{stats.AbandonedPrs}" : "")</div>
+                </div>
+                <div class="d-flex justify-content-between mb-1">
+                    <span>Completed</span>
+                    <span class="fw-bold">@stats.CompletedPrs</span>
+                </div>
+                <div class="progress mb-3" style="height:8px;border-radius:4px;">
+                    <div class="progress-bar bg-success" style="width:@(prTotal > 0 ? (double)stats.CompletedPrs / prTotal * 100 : 0)%"></div>
+                </div>
+                <div class="d-flex justify-content-between mb-1">
+                    <span>Abandoned</span>
+                    <span class="fw-bold">@stats.AbandonedPrs</span>
+                </div>
+                <div class="progress" style="height:8px;border-radius:4px;">
+                    <div class="progress-bar bg-danger" style="width:@(prTotal > 0 ? (double)stats.AbandonedPrs / prTotal * 100 : 0)%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header"><span class="fw-bold">Build Breakdown</span></div>
+            <div class="card-body">
+                @if (stats.TotalBuilds > 0)
+                {
+                    <div style="display:flex;align-items:flex-end;gap:8px;height:120px;padding:0 8px;">
+                        @{
+                            var maxVal = new[] { stats.SucceededBuilds, stats.FailedBuilds, stats.InProgressBuilds }.Max();
+                            var succeededH = maxVal > 0 ? (double)stats.SucceededBuilds / maxVal * 100 : 0;
+                            var failedH = maxVal > 0 ? (double)stats.FailedBuilds / maxVal * 100 : 0;
+                            var inProgH = maxVal > 0 ? (double)stats.InProgressBuilds / maxVal * 100 : 0;
+                        }
+                        <div style="flex:1;display:flex;flex-direction:column;align-items:center;">
+                            <div style="width:100%;background:#059669;border-radius:4px 4px 0 0;height:@(succeededH)px;min-height:4px;transition:height 0.5s;"></div>
+                            <span style="font-size:0.75rem;margin-top:4px;font-weight:600;">@stats.SucceededBuilds</span>
+                            <span style="font-size:0.65rem;color:var(--gray-500);">Passed</span>
+                        </div>
+                        <div style="flex:1;display:flex;flex-direction:column;align-items:center;">
+                            <div style="width:100%;background:#dc2626;border-radius:4px 4px 0 0;height:@(failedH)px;min-height:4px;transition:height 0.5s;"></div>
+                            <span style="font-size:0.75rem;margin-top:4px;font-weight:600;">@stats.FailedBuilds</span>
+                            <span style="font-size:0.65rem;color:var(--gray-500);">Failed</span>
+                        </div>
+                        <div style="flex:1;display:flex;flex-direction:column;align-items:center;">
+                            <div style="width:100%;background:#d97706;border-radius:4px 4px 0 0;height:@(inProgH)px;min-height:4px;transition:height 0.5s;"></div>
+                            <span style="font-size:0.75rem;margin-top:4px;font-weight:600;">@stats.InProgressBuilds</span>
+                            <span style="font-size:0.65rem;color:var(--gray-500);">Running</span>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <p class="text-muted mb-0 py-4 text-center">No build data yet.</p>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@* ── Bottom Row: Lists ── *@
 <div class="row g-3">
     <div class="col-md-6">
-        <div class="card">
+        <div class="card h-100">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <span>Repositories</span>
+                <span class="fw-bold">Repositories</span>
                 <a asp-action="CreateRepository" class="btn btn-sm btn-primary">+ New</a>
             </div>
             <div class="card-body">
@@ -102,14 +216,20 @@
                             </div>
                         }
                     </div>
+                    @if (Model.Repositories.Count > 5)
+                    {
+                        <div class="text-center mt-2">
+                            <a asp-action="Repositories" class="btn btn-outline-primary btn-sm">View all @stats.TotalRepos repositories</a>
+                        </div>
+                    }
                 }
             </div>
         </div>
     </div>
     <div class="col-md-6">
-        <div class="card">
+        <div class="card h-100">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <span>Recent Builds</span>
+                <span class="fw-bold">Recent Builds</span>
                 <a asp-action="Builds" class="btn btn-sm btn-outline-info">All Builds</a>
             </div>
             <div class="card-body">
@@ -135,3 +255,41 @@
         </div>
     </div>
 </div>
+
+@* ── Recent Activity Feed ── *@
+@if (Model.RecentActivity.Count > 0)
+{
+    <div class="row g-3 mt-3">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header"><span class="fw-bold">Recent Activity</span></div>
+                <div class="card-body p-0">
+                    <div style="max-height:400px;overflow-y:auto;">
+                        @foreach (var activity in Model.RecentActivity)
+                        {
+                            <div class="d-flex align-items-center p-3" style="border-bottom:1px solid var(--gray-100);">
+                                <div class="me-3" style="font-size:1.3rem;">@activity.Icon</div>
+                                <div class="flex-grow-1" style="min-width:0;">
+                                    <div class="fw-semibold text-truncate">
+                                        @if (!string.IsNullOrEmpty(activity.Url))
+                                        {
+                                            <a href="@activity.Url" target="_blank" style="color:var(--gray-900);text-decoration:none;">@activity.Title</a>
+                                        }
+                                        else
+                                        {
+                                            @activity.Title
+                                        }
+                                    </div>
+                                    <div class="text-muted" style="font-size:0.85rem;">@activity.Subtitle</div>
+                                </div>
+                                <div class="text-muted text-end ms-3" style="font-size:0.8rem;white-space:nowrap;">
+                                    @activity.Timestamp.ToString("MMM dd HH:mm")
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}

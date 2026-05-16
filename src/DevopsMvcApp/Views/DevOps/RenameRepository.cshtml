@@ -1,0 +1,32 @@
+@model DevOpsRepository
+
+@{
+    ViewData["Title"] = "Rename Repository";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Rename Repository</h1>
+        <p class="page-subtitle">@Model.Name</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <form asp-action="RenameRepository" method="post" class="row g-3">
+            <input type="hidden" name="repoId" value="@Model.Id" />
+            <div class="col-md-6">
+                <label class="form-label">Current Name</label>
+                <input class="form-control" value="@Model.Name" readonly />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">New Name</label>
+                <input name="newName" class="form-control" value="@Model.Name" required />
+            </div>
+            <div class="col-12">
+                <button type="submit" class="btn btn-primary">Rename</button>
+                <a asp-action="Repositories" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>

@@ -14,6 +14,12 @@
         <a asp-action="PullRequests" asp-route-repoId="@repoId" class="btn btn-outline-secondary btn-sm">&larr; Back</a>
         <a asp-action="ApprovePullRequest" asp-route-repoId="@repoId" asp-route-prId="@Model.PullRequestId"
            class="btn btn-success btn-sm">Approve & Complete</a>
+        <form asp-action="AbandonPullRequest" method="post" class="d-inline"
+              onsubmit="return confirm('Abandon PR #@Model.PullRequestId?')">
+            <input type="hidden" name="repoId" value="@repoId" />
+            <input type="hidden" name="prId" value="@Model.PullRequestId" />
+            <button type="submit" class="btn btn-danger btn-sm">Abandon</button>
+        </form>
     </div>
 </div>
 
@@ -70,6 +76,20 @@ else
         </div>
     </div>
 }
+
+<div class="card mb-3">
+    <div class="card-body">
+        <h5 class="fw-bold mb-3">Add Comment</h5>
+        <form asp-action="AddComment" method="post">
+            <input type="hidden" name="repoId" value="@repoId" />
+            <input type="hidden" name="prId" value="@Model.PullRequestId" />
+            <div class="mb-2">
+                <textarea name="content" class="form-control" rows="3" placeholder="Write a comment..." required></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">Post Comment</button>
+        </form>
+    </div>
+</div>
 
 <div>
     <a href="@Model.WebUrl" target="_blank" class="btn btn-primary">Open in Azure DevOps</a>

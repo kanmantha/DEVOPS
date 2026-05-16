@@ -87,6 +87,15 @@ else
                                 {
                                     <a asp-action="RepoFileContent" asp-route-repoId="@repoId" asp-route-path="@file.Path" asp-route-branch="@branch"
                                        class="btn btn-sm btn-outline-primary">View</a>
+                                    <a asp-action="EditFile" asp-route-repoId="@repoId" asp-route-path="@file.Path" asp-route-branch="@branch"
+                                       class="btn btn-sm btn-outline-warning">Edit</a>
+                                    <form asp-action="DeleteFile" method="post" class="d-inline"
+                                          onsubmit="return confirm('Delete @file.Name permanently?')">
+                                        <input type="hidden" name="repoId" value="@repoId" />
+                                        <input type="hidden" name="path" value="@file.Path" />
+                                        <input type="hidden" name="branch" value="@branch" />
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                                    </form>
                                 }
                             </td>
                         </tr>

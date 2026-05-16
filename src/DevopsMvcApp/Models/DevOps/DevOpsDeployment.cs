@@ -75,3 +75,9 @@ public class SwapSlotRequest
     public string SourceSlot { get; set; } = string.Empty;
     public string TargetSlot { get; set; } = string.Empty;
 }
+
+public class CreateReleaseDefinitionRequest
+{
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+}

@@ -1,0 +1,40 @@
+@model FileContent
+
+@{
+    ViewData["Title"] = "Edit File";
+    var decoded = Model.Encoding == "base64"
+        ? System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(Model.Content))
+        : Model.Content;
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Edit File</h1>
+        <p class="page-subtitle">@Model.Path</p>
+    </div>
+    <div>
+        <a asp-action="RepoFiles" asp-route-repoId="@Model.RepositoryId" asp-route-branch="@Model.Branch" class="btn btn-outline-secondary btn-sm">&larr; Back</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <form asp-action="EditFile" method="post" class="row g-3">
+            <input type="hidden" name="repoId" value="@Model.RepositoryId" />
+            <input type="hidden" name="path" value="@Model.Path" />
+            <input type="hidden" name="branch" value="@Model.Branch" />
+            <div class="col-12">
+                <label class="form-label">Content</label>
+                <textarea name="content" class="form-control font-monospace" rows="20" style="font-size:0.8rem;">@decoded</textarea>
+            </div>
+            <div class="col-md-8">
+                <label class="form-label">Commit Message</label>
+                <input name="comment" class="form-control" value="Updated @Model.Name" />
+            </div>
+            <div class="col-12">
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+                <a asp-action="RepoFiles" asp-route-repoId="@Model.RepositoryId" asp-route-branch="@Model.Branch" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>

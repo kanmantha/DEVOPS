@@ -15,7 +15,10 @@
         <a asp-action="RepoFiles" asp-route-repoId="@Model.RepositoryId"
            asp-route-path="@(Model.Path.Contains('/') ? Model.Path[..Model.Path.LastIndexOf('/')] : "")"
            asp-route-branch="@Model.Branch"
-           class="btn btn-outline-secondary btn-sm">&larr; Back</a>
+            class="btn btn-outline-secondary btn-sm">&larr; Back</a>
+        <a asp-action="EditFile" asp-route-repoId="@Model.RepositoryId"
+           asp-route-path="@Model.Path" asp-route-branch="@Model.Branch"
+           class="btn btn-sm btn-outline-warning">Edit</a>
     </div>
 </div>
 

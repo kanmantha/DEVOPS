@@ -1,0 +1,31 @@
+@model CreateReleaseDefinitionRequest
+
+@{
+    ViewData["Title"] = "Create Release Definition";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Create Release Definition</h1>
+        <p class="page-subtitle">Define a new release pipeline</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <form asp-action="CreateReleaseDefinition" method="post" class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label">Name</label>
+                <input asp-for="Name" class="form-control" required />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Description (optional)</label>
+                <input asp-for="Description" class="form-control" />
+            </div>
+            <div class="col-12">
+                <button type="submit" class="btn btn-primary">Create</button>
+                <a asp-action="Releases" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>

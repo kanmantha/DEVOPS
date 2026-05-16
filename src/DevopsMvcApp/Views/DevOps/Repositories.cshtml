@@ -46,6 +46,7 @@ else
                                 <a asp-action="RepoCommits" asp-route-repoId="@repo.Id" class="btn btn-sm btn-outline-secondary">Commits</a>
                                 <a asp-action="RepoBranches" asp-route-repoId="@repo.Id" class="btn btn-sm btn-outline-dark">Branches</a>
                                 <a asp-action="PullRequests" asp-route-repoId="@repo.Id" class="btn btn-sm btn-outline-warning">PRs</a>
+                                <a asp-action="RenameRepository" asp-route-repoId="@repo.Id" class="btn btn-sm btn-outline-secondary">Rename</a>
                                 <a href="@repo.WebUrl" target="_blank" class="btn btn-sm btn-outline-primary">Open</a>
                                 <form asp-action="DeleteRepository" method="post" class="d-inline"
                                       onsubmit="return confirm('Delete @repo.Name permanently?')">

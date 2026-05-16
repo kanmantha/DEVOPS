@@ -5,6 +5,12 @@ using DevopsMvcApp.Services;
 
 namespace DevopsMvcApp.Controllers;
 
+/// <summary>
+/// DevOps Portal controller — requires authentication via [Authorize].
+/// All actions act as a proxy to the Azure DevOps REST API using
+/// connection credentials stored in the user's session.
+/// Every action calls EnsureConnected() first to restore the session.
+/// </summary>
 [Authorize]
 public class DevOpsController : Controller
 {
@@ -15,20 +21,23 @@ public class DevOpsController : Controller
         _devOps = devOps;
     }
 
-    // ── Connect / Dashboard ──
+    // ══════════════════════════════════════════
+    //  CONNECT / DASHBOARD
+    // ══════════════════════════════════════════
 
+    /// <summary>Shows the Azure DevOps connection form.</summary>
     [HttpGet]
     public IActionResult Connect()
     {
         return View(new DevOpsConnection());
     }
 
+    /// <summary>Validates credentials, stores them in session, and tests the connection.</summary>
     [HttpPost]
     public IActionResult Connect(DevOpsConnection connection)
     {
         if (!ModelState.IsValid) return View(connection);
 
-        // Sanitize inputs — strip full URLs, trailing slashes, whitespace
         connection.Organization = SanitizeOrg(connection.Organization);
         connection.Project = connection.Project.Trim().TrimEnd('/');
         connection.Pat = connection.Pat.Trim();
@@ -38,7 +47,7 @@ public class DevOpsController : Controller
         HttpContext.Session.SetString("DevOpsProject", connection.Project);
         HttpContext.Session.SetString("DevOpsPat", connection.Pat);
 
-        // Quick validation — test the connection
+        // Quick validation: try fetching repos to verify credentials
         try
         {
             var repos = _devOps.GetRepositoriesAsync().GetAwaiter().GetResult();
@@ -55,10 +64,10 @@ public class DevOpsController : Controller
         }
     }
 
+    /// <summary>Strips full Azure DevOps URLs from the org field (user may paste a URL).</summary>
     private static string SanitizeOrg(string org)
     {
         org = org.Trim().TrimEnd('/');
-        // Remove full URL prefix if pasted
         foreach (var prefix in new[] { "https://dev.azure.com/", "http://dev.azure.com/", "dev.azure.com/" })
         {
             if (org.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
@@ -70,6 +79,7 @@ public class DevOpsController : Controller
         return org;
     }
 
+    /// <summary>Fetches aggregated dashboard stats (repos, pipelines, builds, PRs, releases, activity).</summary>
     public async Task<IActionResult> Dashboard()
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
@@ -77,6 +87,7 @@ public class DevOpsController : Controller
         return View(dashboard);
     }
 
+    /// <summary>Clears the session and disconnects from Azure DevOps.</summary>
     public IActionResult Disconnect()
     {
         HttpContext.Session.Remove("DevOpsOrg");
@@ -86,8 +97,11 @@ public class DevOpsController : Controller
         return RedirectToAction(nameof(Connect));
     }
 
-    // ── Repositories ──
+    // ══════════════════════════════════════════
+    //  REPOSITORIES
+    // ══════════════════════════════════════════
 
+    /// <summary>Lists all Git repositories in the project.</summary>
     public async Task<IActionResult> Repositories()
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
@@ -95,12 +109,14 @@ public class DevOpsController : Controller
         return View(repos);
     }
 
+    /// <summary>Shows the create-repository form.</summary>
     [HttpGet]
     public IActionResult CreateRepository()
     {
         return View(new CreateRepositoryRequest());
     }
 
+    /// <summary>Creates a new repository and redirects to the list.</summary>
     [HttpPost]
     public async Task<IActionResult> CreateRepository(CreateRepositoryRequest req)
     {
@@ -111,8 +127,47 @@ public class DevOpsController : Controller
         return RedirectToAction(nameof(Repositories));
     }
 
-    // ── Pipelines ──
+    /// <summary>Shows the rename-repository form with current name pre-filled.</summary>
+    [HttpGet]
+    public async Task<IActionResult> RenameRepository(string repoId)
+    {
+        if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
+        var repos = await _devOps.GetRepositoriesAsync();
+        var repo = repos.FirstOrDefault(r => r.Id == repoId);
+        if (repo == null) return NotFound();
+        return View(repo);
+    }
 
+    /// <summary>Renames the repository.</summary>
+    [HttpPost]
+    public async Task<IActionResult> RenameRepository(string repoId, string newName)
+    {
+        if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
+        if (string.IsNullOrWhiteSpace(newName))
+        {
+            ModelState.AddModelError("", "Name is required.");
+            return View(await _devOps.GetRepositoriesAsync().ContinueWith(t => t.Result.FirstOrDefault(r => r.Id == repoId)));
+        }
+        await _devOps.RenameRepositoryAsync(repoId, newName.Trim());
+        TempData["Success"] = $"Repository renamed to '{newName}'.";
+        return RedirectToAction(nameof(Repositories));
+    }
+
+    /// <summary>Deletes a repository after confirmation.</summary>
+    [HttpPost]
+    public async Task<IActionResult> DeleteRepository(string repoId, string repoName)
+    {
+        if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
+        await _devOps.DeleteRepositoryAsync(repoId);
+        TempData["Success"] = $"Repository '{repoName}' deleted.";
+        return RedirectToAction(nameof(Repositories));
+    }
+
+    // ══════════════════════════════════════════
+    //  PIPELINES
+    // ══════════════════════════════════════════
+
+    /// <summary>Lists all YAML pipelines.</summary>
     public async Task<IActionResult> Pipelines()
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
@@ -120,6 +175,7 @@ public class DevOpsController : Controller
         return View(pipelines);
     }
 
+    /// <summary>Shows the create-pipeline form with a repository dropdown.</summary>
     [HttpGet]
     public async Task<IActionResult> CreatePipeline()
     {
@@ -129,11 +185,15 @@ public class DevOpsController : Controller
         return View(new CreatePipelineRequest());
     }
 
+    /// <summary>Commits a YAML file, creates the pipeline definition, and queues a run.</summary>
     [HttpPost]
     public async Task<IActionResult> CreatePipeline(CreatePipelineRequest req)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
         if (!ModelState.IsValid) return View(req);
+
+        // Ensure repo default branch is set correctly before committing
+        await _devOps.SetRepoDefaultBranchAsync(req.RepositoryId, req.DefaultBranch);
 
         // 1. Commit the YAML pipeline file to the repo
         var yaml = GetDotNetPipelineYaml();
@@ -155,6 +215,7 @@ public class DevOpsController : Controller
         return RedirectToAction(nameof(Pipelines));
     }
 
+    /// <summary>Queues a new run of a specific pipeline.</summary>
     public async Task<IActionResult> RunPipeline(int id)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
@@ -163,6 +224,7 @@ public class DevOpsController : Controller
         return RedirectToAction(nameof(Pipelines));
     }
 
+    /// <summary>Shows run history for a pipeline.</summary>
     public async Task<IActionResult> PipelineRuns(int id, string name)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
@@ -172,8 +234,21 @@ public class DevOpsController : Controller
         return View(runs);
     }
 
-    // ── Pull Requests ──
+    /// <summary>Deletes a pipeline definition.</summary>
+    [HttpPost]
+    public async Task<IActionResult> DeletePipeline(int id, string name)
+    {
+        if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
+        await _devOps.DeletePipelineAsync(id);
+        TempData["Success"] = $"Pipeline '{name}' deleted.";
+        return RedirectToAction(nameof(Pipelines));
+    }
 
+    // ══════════════════════════════════════════
+    //  PULL REQUESTS
+    // ══════════════════════════════════════════
+
+    /// <summary>Lists active PRs for the selected repository.</summary>
     public async Task<IActionResult> PullRequests(string? repoId)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
@@ -186,6 +261,7 @@ public class DevOpsController : Controller
         return View(prs);
     }
 
+    /// <summary>Shows the create-PR form.</summary>
     [HttpGet]
     public async Task<IActionResult> CreatePullRequest()
     {
@@ -195,6 +271,7 @@ public class DevOpsController : Controller
         return View(new CreatePullRequestRequest());
     }
 
+    /// <summary>Creates a pull request.</summary>
     [HttpPost]
     public async Task<IActionResult> CreatePullRequest(CreatePullRequestRequest req)
     {
@@ -206,6 +283,7 @@ public class DevOpsController : Controller
         return RedirectToAction(nameof(PullRequests));
     }
 
+    /// <summary>Completes (approves + merges) a pull request.</summary>
     public async Task<IActionResult> ApprovePullRequest(string repoId, int prId)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
@@ -214,8 +292,34 @@ public class DevOpsController : Controller
         return RedirectToAction(nameof(PullRequests));
     }
 
-    // ── Builds & Artifacts ──
+    /// <summary>Abandons a pull request (marks as abandoned without merging).</summary>
+    [HttpPost]
+    public async Task<IActionResult> AbandonPullRequest(string repoId, int prId)
+    {
+        if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
+        await _devOps.AbandonPullRequestAsync(repoId, prId);
+        TempData["Success"] = $"PR #{prId} abandoned.";
+        return RedirectToAction(nameof(PullRequests));
+    }
 
+    /// <summary>Posts a new comment thread on a pull request.</summary>
+    [HttpPost]
+    public async Task<IActionResult> AddComment(string repoId, int prId, string content)
+    {
+        if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
+        if (!string.IsNullOrWhiteSpace(content))
+        {
+            await _devOps.AddPullRequestCommentAsync(repoId, prId, content);
+            TempData["Success"] = "Comment added.";
+        }
+        return RedirectToAction(nameof(PullRequestDetail), new { repoId, prId });
+    }
+
+    // ══════════════════════════════════════════
+    //  BUILDS & ARTIFACTS
+    // ══════════════════════════════════════════
+
+    /// <summary>Lists recent builds.</summary>
     public async Task<IActionResult> Builds()
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
@@ -223,6 +327,7 @@ public class DevOpsController : Controller
         return View(builds);
     }
 
+    /// <summary>Lists artifacts produced by a specific build.</summary>
     public async Task<IActionResult> Artifacts(int buildId, string? buildNumber)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
@@ -240,6 +345,7 @@ public class DevOpsController : Controller
         }
     }
 
+    /// <summary>Proxies artifact download through the server (keeps PAT secure in the header).</summary>
     public async Task<IActionResult> DownloadArtifact(string downloadUrl)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
@@ -256,8 +362,11 @@ public class DevOpsController : Controller
         }
     }
 
-    // ── File Browser ──
+    // ══════════════════════════════════════════
+    //  FILE BROWSER
+    // ══════════════════════════════════════════
 
+    /// <summary>Lists files/folders at a given path in a repository branch.</summary>
     public async Task<IActionResult> RepoFiles(string repoId, string? path, string? branch)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
@@ -269,6 +378,7 @@ public class DevOpsController : Controller
         return View(files);
     }
 
+    /// <summary>Displays the raw content of a file.</summary>
     public async Task<IActionResult> RepoFileContent(string repoId, string path, string? branch)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
@@ -276,6 +386,7 @@ public class DevOpsController : Controller
         return View(file);
     }
 
+    /// <summary>Shows the file upload form.</summary>
     [HttpGet]
     public async Task<IActionResult> UploadFile()
     {
@@ -284,6 +395,7 @@ public class DevOpsController : Controller
         return View(new UploadFileRequest());
     }
 
+    /// <summary>Commits a new file to a repository branch.</summary>
     [HttpPost]
     public async Task<IActionResult> UploadFile(UploadFileRequest req)
     {
@@ -294,8 +406,41 @@ public class DevOpsController : Controller
         return RedirectToAction(nameof(RepoFiles), new { repoId = req.RepositoryId, branch = req.Branch });
     }
 
-    // ── Commits ──
+    /// <summary>Shows the inline file editor pre-filled with current file content.</summary>
+    [HttpGet]
+    public async Task<IActionResult> EditFile(string repoId, string path, string? branch)
+    {
+        if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
+        branch ??= "main";
+        var file = await _devOps.GetFileContentAsync(repoId, path, branch);
+        return View(file);
+    }
 
+    /// <summary>Saves edited file content via a push with changeType "edit".</summary>
+    [HttpPost]
+    public async Task<IActionResult> EditFile(string repoId, string path, string branch, string content, string comment)
+    {
+        if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
+        await _devOps.EditFileAsync(repoId, branch, path, content, comment ?? $"Updated {path}");
+        TempData["Success"] = $"File '{path}' updated.";
+        return RedirectToAction(nameof(RepoFiles), new { repoId, branch });
+    }
+
+    /// <summary>Deletes a file from a repository branch.</summary>
+    [HttpPost]
+    public async Task<IActionResult> DeleteFile(string repoId, string path, string branch)
+    {
+        if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
+        await _devOps.DeleteFileAsync(repoId, branch, path, $"Deleted {path}");
+        TempData["Success"] = $"File '{path}' deleted.";
+        return RedirectToAction(nameof(RepoFiles), new { repoId, branch });
+    }
+
+    // ══════════════════════════════════════════
+    //  COMMITS & BRANCHES
+    // ══════════════════════════════════════════
+
+    /// <summary>Shows recent commits for a repository.</summary>
     public async Task<IActionResult> RepoCommits(string repoId)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
@@ -305,8 +450,7 @@ public class DevOpsController : Controller
         return View(commits);
     }
 
-    // ── Branches ──
-
+    /// <summary>Shows all branches in a repository with create/delete actions.</summary>
     public async Task<IActionResult> RepoBranches(string repoId)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
@@ -316,19 +460,32 @@ public class DevOpsController : Controller
         return View(branches);
     }
 
-    // ── Delete Repository ──
-
+    /// <summary>Creates a new branch from a source branch.</summary>
     [HttpPost]
-    public async Task<IActionResult> DeleteRepository(string repoId, string repoName)
+    public async Task<IActionResult> CreateBranch(string repoId, string branchName, string? sourceBranch)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
-        await _devOps.DeleteRepositoryAsync(repoId);
-        TempData["Success"] = $"Repository '{repoName}' deleted.";
-        return RedirectToAction(nameof(Repositories));
+        sourceBranch = string.IsNullOrWhiteSpace(sourceBranch) ? null : sourceBranch;
+        await _devOps.CreateBranchAsync(repoId, branchName.Trim(), sourceBranch);
+        TempData["Success"] = $"Branch '{branchName}' created.";
+        return RedirectToAction(nameof(RepoBranches), new { repoId });
     }
 
-    // ── Cancel Pipeline Run ──
+    /// <summary>Deletes a branch.</summary>
+    [HttpPost]
+    public async Task<IActionResult> DeleteBranch(string repoId, string branchName)
+    {
+        if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
+        await _devOps.DeleteBranchAsync(repoId, branchName);
+        TempData["Success"] = $"Branch '{branchName}' deleted.";
+        return RedirectToAction(nameof(RepoBranches), new { repoId });
+    }
 
+    // ══════════════════════════════════════════
+    //  CANCEL OPERATIONS
+    // ══════════════════════════════════════════
+
+    /// <summary>Cancels a pipeline run.</summary>
     public async Task<IActionResult> CancelRun(int pipelineId, int runId)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
@@ -337,6 +494,7 @@ public class DevOpsController : Controller
         return RedirectToAction(nameof(PipelineRuns), new { id = pipelineId });
     }
 
+    /// <summary>Cancels a build.</summary>
     public async Task<IActionResult> CancelBuild(int buildId)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
@@ -345,8 +503,11 @@ public class DevOpsController : Controller
         return RedirectToAction(nameof(Builds));
     }
 
-    // ── Build Timeline & Logs ──
+    // ══════════════════════════════════════════
+    //  BUILD TIMELINE & LOGS
+    // ══════════════════════════════════════════
 
+    /// <summary>Shows the step-by-step timeline for a completed build.</summary>
     public async Task<IActionResult> BuildTimeline(int buildId, string? buildNumber)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
@@ -356,6 +517,7 @@ public class DevOpsController : Controller
         return View(timeline);
     }
 
+    /// <summary>Shows the raw log text for a specific build step.</summary>
     public async Task<IActionResult> BuildLog(int buildId, int logId, string? stepName)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
@@ -365,8 +527,11 @@ public class DevOpsController : Controller
         return View(log);
     }
 
-    // ── PR Detail with Comments ──
+    // ══════════════════════════════════════════
+    //  PR DETAIL (with comments)
+    // ══════════════════════════════════════════
 
+    /// <summary>Displays PR details and associated comment threads.</summary>
     public async Task<IActionResult> PullRequestDetail(string repoId, int prId)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
@@ -379,8 +544,11 @@ public class DevOpsController : Controller
         return View(pr);
     }
 
-    // ── Auto PR — creates a PR from a feature branch ──
+    // ══════════════════════════════════════════
+    //  AUTO PR (from feature branch)
+    // ══════════════════════════════════════════
 
+    /// <summary>Auto-creates a PR from a feature branch to main.</summary>
     [HttpPost]
     public async Task<IActionResult> AutoCreatePr(string repoId, string featureBranch, string title, string description)
     {
@@ -401,8 +569,11 @@ public class DevOpsController : Controller
         return RedirectToAction(nameof(PullRequests));
     }
 
-    // ── Blue-Green Deployments ──
+    // ══════════════════════════════════════════
+    //  BLUE-GREEN DEPLOYMENTS
+    // ══════════════════════════════════════════
 
+    /// <summary>Shows the visual Blue-Green deployment dashboard with slot cards.</summary>
     public async Task<IActionResult> Deployments()
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
@@ -412,6 +583,7 @@ public class DevOpsController : Controller
         return View(envs);
     }
 
+    /// <summary>Shows a tabular view of deployment environments.</summary>
     public async Task<IActionResult> Environments()
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
@@ -419,6 +591,7 @@ public class DevOpsController : Controller
         return View(envs);
     }
 
+    /// <summary>Shows releases and release definitions with CRUD forms.</summary>
     public async Task<IActionResult> Releases()
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
@@ -428,6 +601,7 @@ public class DevOpsController : Controller
         return View(releases);
     }
 
+    /// <summary>Creates a new release from a release definition.</summary>
     [HttpPost]
     public async Task<IActionResult> CreateRelease(int definitionId, string? description)
     {
@@ -440,6 +614,42 @@ public class DevOpsController : Controller
         return RedirectToAction(nameof(Releases));
     }
 
+    /// <summary>Shows the create-release-definition form.</summary>
+    [HttpGet]
+    public IActionResult CreateReleaseDefinition()
+    {
+        return View(new CreateReleaseDefinitionRequest());
+    }
+
+    /// <summary>Creates a new release definition.</summary>
+    [HttpPost]
+    public async Task<IActionResult> CreateReleaseDefinition(string name, string? description)
+    {
+        if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            ModelState.AddModelError("", "Name is required.");
+            return View(new CreateReleaseDefinitionRequest());
+        }
+        var def = await _devOps.CreateReleaseDefinitionAsync(name.Trim(), description?.Trim());
+        if (def != null)
+            TempData["Success"] = $"Release definition '{def.Name}' created.";
+        else
+            TempData["Error"] = "Failed to create release definition.";
+        return RedirectToAction(nameof(Releases));
+    }
+
+    /// <summary>Deletes a release definition.</summary>
+    [HttpPost]
+    public async Task<IActionResult> DeleteReleaseDefinition(int id, string name)
+    {
+        if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
+        await _devOps.DeleteReleaseDefinitionAsync(id);
+        TempData["Success"] = $"Release definition '{name}' deleted.";
+        return RedirectToAction(nameof(Releases));
+    }
+
+    /// <summary>Swaps active/standby slots within an environment (simulated).</summary>
     [HttpPost]
     public async Task<IActionResult> SwapSlots(string envName)
     {
@@ -457,6 +667,7 @@ public class DevOpsController : Controller
         return RedirectToAction(nameof(Deployments));
     }
 
+    /// <summary>Deploys a version to a specific slot (simulated).</summary>
     [HttpPost]
     public async Task<IActionResult> DeployToSlot(string envName, string slotLabel, string version)
     {
@@ -466,8 +677,12 @@ public class DevOpsController : Controller
         return RedirectToAction(nameof(Deployments));
     }
 
-    // ── Helpers ──
+    // ══════════════════════════════════════════
+    //  HELPERS
+    // ══════════════════════════════════════════
 
+    /// <summary>Restores the DevOps connection from session data.
+    /// Returns false if no connection is stored, which triggers a redirect to Connect.</summary>
     private bool EnsureConnected()
     {
         var org = HttpContext.Session.GetString("DevOpsOrg");
@@ -484,6 +699,7 @@ public class DevOpsController : Controller
         return true;
     }
 
+    /// <summary>Returns the default .NET CI pipeline YAML content.</summary>
     private static string GetDotNetPipelineYaml()
     {
         return @"

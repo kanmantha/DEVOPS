@@ -11,6 +11,7 @@
         <p class="page-subtitle">Release management pipeline history</p>
     </div>
     <div>
+        <a asp-action="CreateReleaseDefinition" class="btn btn-primary btn-sm">+ New Definition</a>
         <a asp-action="Deployments" class="btn btn-outline-success btn-sm">Deployments</a>
         <a asp-action="Environments" class="btn btn-outline-secondary btn-sm">Environments</a>
     </div>
@@ -39,6 +40,39 @@
                     <button type="submit" class="btn btn-primary w-100">Create Release</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="fw-bold mb-3">Release Definitions</h5>
+            <table class="table table-devops mb-0">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Description</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var d in defs)
+                    {
+                        <tr>
+                            <td class="fw-semibold"><a href="@d.WebUrl" target="_blank">@d.Name</a></td>
+                            <td>@(d.Description ?? "—")</td>
+                            <td class="text-end">
+                                <a href="@d.WebUrl" target="_blank" class="btn btn-sm btn-outline-primary">Open</a>
+                                <form asp-action="DeleteReleaseDefinition" method="post" class="d-inline"
+                                      onsubmit="return confirm('Delete release definition @d.Name permanently?')">
+                                    <input type="hidden" name="id" value="@d.Id" />
+                                    <input type="hidden" name="name" value="@d.Name" />
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
         </div>
     </div>
 }
@@ -97,9 +131,7 @@ else
 {
     <div class="alert alert-info mt-3">
         No release definitions found in your Azure DevOps project.
-        <a href="https://learn.microsoft.com/en-us/azure/devops/release/getting-started/create-release-pipeline" target="_blank">
-            Create a release pipeline
-        </a>
+        <a asp-action="CreateReleaseDefinition" class="alert-link">Create one now</a>
         to enable release management from this portal.
     </div>
 }
