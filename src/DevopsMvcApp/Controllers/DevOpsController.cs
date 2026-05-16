@@ -195,24 +195,10 @@ public class DevOpsController : Controller
         // Ensure repo default branch is set correctly before committing
         await _devOps.SetRepoDefaultBranchAsync(req.RepositoryId, req.DefaultBranch);
 
-        // 1. Commit the YAML pipeline file (add if new, edit if exists)
+        // 1. Commit the YAML pipeline file (CommitFileAsync auto-falls back to "edit" if file exists)
         var yaml = GetDotNetPipelineYaml();
-        bool fileExists;
-        try
-        {
-            await _devOps.GetFileContentAsync(req.RepositoryId, req.YamlPath, req.DefaultBranch);
-            fileExists = true;
-        }
-        catch
-        {
-            fileExists = false;
-        }
-        if (fileExists)
-            await _devOps.EditFileAsync(req.RepositoryId, req.DefaultBranch, req.YamlPath, yaml,
-                $"Update {req.YamlPath} pipeline definition");
-        else
-            await _devOps.CommitFileAsync(req.RepositoryId, req.DefaultBranch, req.YamlPath, yaml,
-                $"Add {req.YamlPath} pipeline definition");
+        await _devOps.CommitFileAsync(req.RepositoryId, req.DefaultBranch, req.YamlPath, yaml,
+            $"Add {req.YamlPath} pipeline definition");
 
         // 2. Create the pipeline definition
         var pipeline = await _devOps.CreatePipelineAsync(req);

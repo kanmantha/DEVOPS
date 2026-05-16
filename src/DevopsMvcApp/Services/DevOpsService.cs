@@ -337,30 +337,39 @@ public class DevOpsService
         throw new HttpRequestException($"409 Conflict — retries exhausted for push on {repoId}/{branch}");
     }
 
-    /// <summary>Commits a new file to a branch via the Azure DevOps Push API.</summary>
+    /// <summary>Commits a new file to a branch via the Azure DevOps Push API.
+    /// If the file already exists, automatically falls back to changeType "edit".</summary>
     public async Task CommitFileAsync(string repoId, string branch, string path, string content, string comment)
     {
         var normalizedPath = path.StartsWith("/") ? path : $"/{path}";
-        await PushWithRetryAsync(repoId, branch, oid => new
+        try
         {
-            refUpdates = new[] { new { name = $"refs/heads/{branch}", oldObjectId = oid } },
-            commits = new[]
+            await PushWithRetryAsync(repoId, branch, oid => new
             {
-                new
+                refUpdates = new[] { new { name = $"refs/heads/{branch}", oldObjectId = oid } },
+                commits = new[]
                 {
-                    comment,
-                    changes = new[]
+                    new
                     {
-                        new
+                        comment,
+                        changes = new[]
                         {
-                            changeType = "add",
-                            item = new { path = normalizedPath },
-                            newContent = new { content, contentType = "rawtext" }
+                            new
+                            {
+                                changeType = "add",
+                                item = new { path = normalizedPath },
+                                newContent = new { content, contentType = "rawtext" }
+                            }
                         }
                     }
                 }
-            }
-        });
+            });
+        }
+        catch (HttpRequestException ex) when (ex.Message.Contains("already exists"))
+        {
+            // File exists — retry with "edit" changeType
+            await EditFileAsync(repoId, branch, path, content, comment);
+        }
     }
 
     /// <summary>Edits existing file content via a push with changeType "edit".</summary>
