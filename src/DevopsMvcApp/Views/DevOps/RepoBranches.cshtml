@@ -1,0 +1,56 @@
+@model List<BranchInfo>
+
+@{
+    ViewData["Title"] = "Branches";
+    var repoId = ViewBag.RepoId as string;
+    var repoName = ViewBag.RepoName as string ?? "Repository";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">@repoName</h1>
+        <p class="page-subtitle">Branches</p>
+    </div>
+    <div>
+        <a asp-action="RepoFiles" asp-route-repoId="@repoId" class="btn btn-outline-primary btn-sm">Browse Files</a>
+        <a asp-action="Repositories" class="btn btn-outline-secondary btn-sm">All Repos</a>
+    </div>
+</div>
+
+@if (Model.Count == 0)
+{
+    <div class="empty-state">
+        <div class="empty-icon">🌿</div>
+        <h3>No Branches</h3>
+        <p>No branches found in this repository.</p>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body p-0">
+            <table class="table table-devops">
+                <thead>
+                    <tr>
+                        <th>Branch</th>
+                        <th>Commit</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var branch in Model)
+                    {
+                        <tr>
+                            <td class="fw-semibold">🌿 @branch.Name</td>
+                            <td><code>@branch.ObjectId[..8]</code></td>
+                            <td class="text-end">
+                                <a asp-action="RepoFiles" asp-route-repoId="@repoId" asp-route-branch="@branch.Name"
+                                   class="btn btn-sm btn-outline-info">Browse</a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}

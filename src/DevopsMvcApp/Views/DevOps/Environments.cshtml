@@ -1,0 +1,76 @@
+@model List<DeploymentEnvironment>
+
+@{
+    ViewData["Title"] = "Deployment Environments";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Deployment Environments</h1>
+        <p class="page-subtitle">Blue-Green slot overview</p>
+    </div>
+    <div>
+        <a asp-action="Deployments" class="btn btn-outline-primary btn-sm">Visual View</a>
+        <a asp-action="Releases" class="btn btn-outline-info btn-sm">Releases</a>
+    </div>
+</div>
+
+@foreach (var env in Model)
+{
+    <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><strong>@env.Name</strong> <span class="text-muted ms-2">@env.Description</span></span>
+            <span class="badge @(env.Status == "Live" ? "bg-success" : "bg-secondary") rounded-pill">@env.Status</span>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-devops">
+                <thead>
+                    <tr>
+                        <th>Slot</th>
+                        <th>Status</th>
+                        <th>Version</th>
+                        <th>Last Deployed</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var slot in env.Slots)
+                    {
+                        <tr style="background: @(slot.Active ? slot.BackgroundColor : "transparent");">
+                            <td class="fw-semibold">
+                                <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:@slot.Color;margin-right:.5rem;"></span>
+                                @slot.Label
+                                @if (slot.Active)
+                                {
+                                    <span class="badge bg-success ms-2" style="font-size:.65rem;">ACTIVE</span>
+                                }
+                            </td>
+                            <td><span class="badge bg-secondary rounded-pill">@(slot.Active ? "Live" : "Standby")</span></td>
+                            <td><code>@slot.CurrentVersion</code></td>
+                            <td>@slot.LastDeployed?.ToString("g")</td>
+                            <td class="text-end">
+                                <form asp-action="DeployToSlot" method="post" class="d-inline">
+                                    <input type="hidden" name="envName" value="@env.Name" />
+                                    <input type="hidden" name="slotLabel" value="@slot.Label" />
+                                    <input name="version" class="form-control form-control-sm d-inline" style="width:130px;" placeholder="v1.2.4" value="v1.2.4-build.46" required />
+                                    <button type="submit" class="btn btn-sm btn-outline-primary">Deploy</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                    <tr>
+                        <td colspan="5" class="text-center">
+                            <form asp-action="SwapSlots" method="post" class="d-inline">
+                                <input type="hidden" name="envName" value="@env.Name" />
+                                <button type="submit" class="btn btn-warning btn-sm fw-bold"
+                                        onclick="return confirm('Swap slots in @env.Name?')">
+                                    ⇄ Swap Blue ↔ Green
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+}

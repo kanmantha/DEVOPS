@@ -1,0 +1,104 @@
+@model CreatePipelineRequest
+
+@{
+    ViewData["Title"] = "Create Pipeline";
+    var repos = ViewBag.Repositories as List<DevOpsRepository> ?? new();
+}
+
+<div class="page-header">
+    <h1 class="page-title">Create Pipeline</h1>
+    <p class="page-subtitle">Commits <code>azure-pipelines.yml</code> to the repo and creates a pipeline definition.</p>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body p-4">
+                <form asp-action="CreatePipeline" method="post">
+                    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+                    <div class="mb-3">
+                        <label asp-for="Name" class="form-label">Pipeline Name</label>
+                        <input asp-for="Name" class="form-control" placeholder="MyApp-CI" />
+                        <span asp-validation-for="Name" class="text-danger"></span>
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="RepositoryId" class="form-label">Repository</label>
+                        <select asp-for="RepositoryId" class="form-select">
+                            @foreach (var repo in repos)
+                            {
+                                <option value="@repo.Id">@repo.Name</option>
+                            }
+                        </select>
+                        <span asp-validation-for="RepositoryId" class="text-danger"></span>
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="DefaultBranch" class="form-label">Branch</label>
+                        <input asp-for="DefaultBranch" class="form-control" value="main" />
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="YamlPath" class="form-label">YAML File Path</label>
+                        <input asp-for="YamlPath" class="form-control" value="azure-pipelines.yml" />
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">Create & Run</button>
+                        <a asp-action="Pipelines" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><strong>Pipeline YAML Preview</strong></div>
+            <div class="card-body p-0">
+                <pre class="pipeline-yaml-preview mb-0" style="border-radius: 0 0 var(--radius) var(--radius);"><code>trigger:
+  branches:
+    include:
+    - main
+    - develop
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  buildConfiguration: 'Release'
+
+steps:
+- task: DotNetCoreCLI@2
+  displayName: 'Restore'
+  inputs:
+    command: 'restore'
+
+- task: DotNetCoreCLI@2
+  displayName: 'Build'
+  inputs:
+    command: 'build'
+    arguments: '--configuration $(buildConfiguration)'
+
+- task: DotNetCoreCLI@2
+  displayName: 'Test'
+  inputs:
+    command: 'test'
+    arguments: '--configuration $(buildConfiguration)'
+
+- task: DotNetCoreCLI@2
+  displayName: 'Publish'
+  inputs:
+    command: 'publish'
+    publishWebProjects: true
+    arguments: '--configuration $(buildConfiguration)
+      --output $(Build.ArtifactStagingDirectory)'
+
+- task: PublishBuildArtifacts@1
+  displayName: 'Publish Artifacts'
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+    ArtifactName: 'drop'</code></pre>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    @await Html.PartialAsync("_ValidationScriptsPartial")
+}

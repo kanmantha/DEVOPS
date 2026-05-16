@@ -1,0 +1,69 @@
+@model List<PipelineRun>
+
+@{
+    ViewData["Title"] = "Pipeline Runs";
+    var pipelineName = ViewBag.PipelineName as string ?? "Pipeline";
+    var pipelineId = ViewBag.PipelineId as int?;
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">@pipelineName</h1>
+        <p class="page-subtitle">Runs</p>
+    </div>
+    <div>
+        <a asp-action="RunPipeline" asp-route-id="@pipelineId" class="btn btn-success">Queue New Run</a>
+        <a asp-action="Pipelines" class="btn btn-outline-secondary">Back</a>
+    </div>
+</div>
+
+@if (Model.Count == 0)
+{
+    <div class="empty-state">
+        <div class="empty-icon">⏱️</div>
+        <h3>No Runs Yet</h3>
+        <p>Queue the first run for this pipeline.</p>
+        <a asp-action="RunPipeline" asp-route-id="@pipelineId" class="btn btn-success">Queue Run</a>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body p-0">
+            <table class="table table-devops">
+                <thead>
+                    <tr>
+                        <th>Run #</th>
+                        <th>State</th>
+                        <th>Result</th>
+                        <th>Created</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var run in Model)
+                    {
+                        <tr>
+                            <td class="fw-semibold">@run.Id</td>
+                            <td><span class="badge bg-secondary rounded-pill">@run.State</span></td>
+                            <td>
+                                <span class="badge rounded-pill @(run.Result == "succeeded" ? "bg-success" : run.Result == "failed" ? "bg-danger" : "bg-warning")">
+                                    @(string.IsNullOrEmpty(run.Result) ? "Running..." : run.Result)
+                                </span>
+                            </td>
+                            <td>@run.CreatedDate.ToString("g")</td>
+                            <td class="text-end">
+                                <a href="@run.WebUrl" target="_blank" class="btn btn-sm btn-outline-info">Details</a>
+                                @if (run.State != "completed" && run.State != "cancelling")
+                                {
+                                    <a asp-action="CancelRun" asp-route-pipelineId="@pipelineId" asp-route-runId="@run.Id"
+                                       class="btn btn-sm btn-outline-danger">Cancel</a>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}

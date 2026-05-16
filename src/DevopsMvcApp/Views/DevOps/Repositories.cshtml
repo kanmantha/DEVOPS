@@ -1,0 +1,63 @@
+@model List<DevOpsRepository>
+
+@{
+    ViewData["Title"] = "Repositories";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Repositories</h1>
+        <p class="page-subtitle">@Model.Count repo(s) in this project</p>
+    </div>
+    <div>
+        <a asp-action="CreateRepository" class="btn btn-primary">+ New Repository</a>
+    </div>
+</div>
+
+@if (Model.Count == 0)
+{
+    <div class="empty-state">
+        <div class="empty-icon">📁</div>
+        <h3>No Repositories</h3>
+        <p>This project doesn't have any Git repositories yet.</p>
+        <a asp-action="CreateRepository" class="btn btn-primary">Create Repository</a>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body p-0">
+            <table class="table table-devops">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Default Branch</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var repo in Model)
+                    {
+                        <tr>
+                            <td class="fw-semibold"><a href="@repo.WebUrl" target="_blank">@repo.Name</a></td>
+                            <td><code>@repo.DefaultBranch</code></td>
+                            <td class="text-end">
+                                <a asp-action="RepoFiles" asp-route-repoId="@repo.Id" class="btn btn-sm btn-outline-info">Browse</a>
+                                <a asp-action="RepoCommits" asp-route-repoId="@repo.Id" class="btn btn-sm btn-outline-secondary">Commits</a>
+                                <a asp-action="RepoBranches" asp-route-repoId="@repo.Id" class="btn btn-sm btn-outline-dark">Branches</a>
+                                <a asp-action="PullRequests" asp-route-repoId="@repo.Id" class="btn btn-sm btn-outline-warning">PRs</a>
+                                <a href="@repo.WebUrl" target="_blank" class="btn btn-sm btn-outline-primary">Open</a>
+                                <form asp-action="DeleteRepository" method="post" class="d-inline"
+                                      onsubmit="return confirm('Delete @repo.Name permanently?')">
+                                    <input type="hidden" name="repoId" value="@repo.Id" />
+                                    <input type="hidden" name="repoName" value="@repo.Name" />
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}

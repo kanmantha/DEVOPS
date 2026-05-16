@@ -1,0 +1,41 @@
+﻿@{
+    ViewData["Title"] = "Home";
+}
+
+<div class="text-center" style="padding: 3rem 0;">
+    <h1 class="display-4 fw-bold" style="color: var(--gray-900);">DevOps MVC Application</h1>
+    <p class="lead text-muted" style="font-size:1.2rem;">.NET Core MVC with SQLite — Automated CI/CD Pipeline</p>
+</div>
+
+<div class="row g-3 mt-2">
+    <div class="col-md-4 fade-in fade-in-delay-1">
+        <div class="card text-center h-100" style="border-top: 4px solid var(--primary);">
+            <div class="card-body py-4">
+                <div style="font-size:2.5rem;margin-bottom:.5rem;">🔐</div>
+                <h5 class="card-title fw-bold">Authentication</h5>
+                <p class="card-text text-muted">Register and login with ASP.NET Core Identity. Secure access with cookie auth.</p>
+                <a asp-area="Identity" asp-page="/Account/Register" class="btn btn-outline-primary">Register</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 fade-in fade-in-delay-2">
+        <div class="card text-center h-100" style="border-top: 4px solid var(--success);">
+            <div class="card-body py-4">
+                <div style="font-size:2.5rem;margin-bottom:.5rem;">🗄️</div>
+                <h5 class="card-title fw-bold">SQLite Database</h5>
+                <p class="card-text text-muted">Lightweight local database with Entity Framework Core and full CRUD support.</p>
+                <a asp-controller="Products" asp-action="Index" class="btn btn-outline-success">Manage Products</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 fade-in fade-in-delay-3">
+        <div class="card text-center h-100" style="border-top: 4px solid var(--info);">
+            <div class="card-body py-4">
+                <div style="font-size:2.5rem;margin-bottom:.5rem;">⚡</div>
+                <h5 class="card-title fw-bold">CI/CD Pipeline</h5>
+                <p class="card-text text-muted">GitHub Actions and Azure DevOps integration for automated builds and deployment.</p>
+                <a asp-controller="DevOps" asp-action="Dashboard" class="btn btn-outline-info">DevOps Dashboard</a>
+            </div>
+        </div>
+    </div>
+</div>

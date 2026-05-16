@@ -1,0 +1,24 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+*.sln.docstates
+*.userprefs
+
+## Secrets & data
+app.db
+Keys/
+**/appsettings.Development.json
+
+## IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+*~
+
+## Build output
+publish/
+packages/
+*.nupkg

@@ -1,0 +1,55 @@
+@model List<CommitInfo>
+
+@{
+    ViewData["Title"] = "Commits";
+    var repoId = ViewBag.RepoId as string;
+    var repoName = ViewBag.RepoName as string ?? "Repository";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">@repoName</h1>
+        <p class="page-subtitle">Recent Commits</p>
+    </div>
+    <div>
+        <a asp-action="RepoFiles" asp-route-repoId="@repoId" class="btn btn-outline-primary btn-sm">Browse Files</a>
+        <a asp-action="Repositories" class="btn btn-outline-secondary btn-sm">All Repos</a>
+    </div>
+</div>
+
+@if (Model.Count == 0)
+{
+    <div class="empty-state">
+        <div class="empty-icon">📝</div>
+        <h3>No Commits</h3>
+        <p>This repository doesn't have any commits yet.</p>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="list-group list-group-flush">
+                @foreach (var commit in Model)
+                {
+                    <div class="list-group-item" style="border-radius:0;border-left:3px solid var(--primary);margin:0;">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <strong>@commit.Comment</strong>
+                                <br />
+                                <small class="text-muted">
+                                    <code>@commit.CommitId[..8]</code> &middot;
+                                    @commit.AuthorName &middot;
+                                    @commit.CommitDate.ToString("g")
+                                </small>
+                            </div>
+                            <div>
+                                <a href="@commit.RemoteUrl" target="_blank" class="btn btn-sm btn-outline-secondary">View</a>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}

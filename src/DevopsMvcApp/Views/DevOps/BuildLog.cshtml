@@ -1,0 +1,41 @@
+@model List<BuildLogEntry>
+
+@{
+    ViewData["Title"] = "Build Log";
+    var stepName = ViewBag.StepName as string ?? "Build Log";
+    var buildId = ViewBag.BuildId as int?;
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">@stepName</h1>
+        <p class="page-subtitle">@Model.Count lines</p>
+    </div>
+    <div>
+        <a asp-action="BuildTimeline" asp-route-buildId="@buildId" class="btn btn-outline-secondary">&larr; Back to Timeline</a>
+    </div>
+</div>
+
+@if (Model.Count == 0)
+{
+    <div class="empty-state">
+        <div class="empty-icon">📝</div>
+        <h3>No Log Output</h3>
+        <p>This step produced no log output.</p>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="terminal">
+                <code>
+                    @foreach (var line in Model)
+                    {
+                        <span><span class="line-number">@line.LineNumber</span>@line.Text</span><br />
+                    }
+                </code>
+            </div>
+        </div>
+    </div>
+}

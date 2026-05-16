@@ -1,0 +1,67 @@
+@model List<DevOpsBuild>
+
+@{
+    ViewData["Title"] = "Builds";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Builds</h1>
+        <p class="page-subtitle">@Model.Count recent build(s)</p>
+    </div>
+</div>
+
+@if (Model.Count == 0)
+{
+    <div class="empty-state">
+        <div class="empty-icon">📦</div>
+        <h3>No Builds</h3>
+        <p>Run a pipeline to see build results here.</p>
+        <a asp-action="Pipelines" class="btn btn-primary">Go to Pipelines</a>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body p-0">
+            <table class="table table-devops">
+                <thead>
+                    <tr>
+                        <th>Build #</th>
+                        <th>Status</th>
+                        <th>Result</th>
+                        <th>Queued</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var build in Model)
+                    {
+                        <tr>
+                            <td class="fw-semibold">@build.BuildNumber</td>
+                            <td><span class="badge bg-secondary rounded-pill">@build.Status</span></td>
+                            <td>
+                                <span class="badge rounded-pill @(build.Result == "succeeded" ? "bg-success" : build.Result == "failed" ? "bg-danger" : "bg-warning")">
+                                    @(string.IsNullOrEmpty(build.Result) ? "In Progress" : build.Result)
+                                </span>
+                            </td>
+                            <td>@build.QueueTime.ToString("g")</td>
+                            <td class="text-end">
+                                <a href="@build.WebUrl" target="_blank" class="btn btn-sm btn-outline-primary">View</a>
+                                <a asp-action="BuildTimeline" asp-route-buildId="@build.Id" asp-route-buildNumber="@build.BuildNumber"
+                                   class="btn btn-sm btn-outline-dark">Timeline</a>
+                                <a asp-action="Artifacts" asp-route-buildId="@build.Id" asp-route-buildNumber="@build.BuildNumber"
+                                   class="btn btn-sm btn-outline-info">Artifacts</a>
+                                @if (build.Status != "completed" && build.Status != "cancelling")
+                                {
+                                    <a asp-action="CancelBuild" asp-route-buildId="@build.Id"
+                                       class="btn btn-sm btn-outline-danger">Cancel</a>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}

@@ -1,0 +1,76 @@
+@model DevOpsPullRequest
+
+@{
+    ViewData["Title"] = $"PR #{Model.PullRequestId}";
+    var comments = ViewBag.Comments as List<PullRequestComment> ?? new();
+    var repoId = ViewBag.RepoId as string;
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">PR #@Model.PullRequestId: @Model.Title</h1>
+    </div>
+    <div>
+        <a asp-action="PullRequests" asp-route-repoId="@repoId" class="btn btn-outline-secondary btn-sm">&larr; Back</a>
+        <a asp-action="ApprovePullRequest" asp-route-repoId="@repoId" asp-route-prId="@Model.PullRequestId"
+           class="btn btn-success btn-sm">Approve & Complete</a>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <strong>Status</strong><br />
+                <span class="badge bg-info rounded-pill mt-1">@Model.Status</span>
+            </div>
+            <div class="col-md-3">
+                <strong>Author</strong><br />
+                <span class="mt-1">@Model.CreatedBy</span>
+            </div>
+            <div class="col-md-3">
+                <strong>Created</strong><br />
+                <span class="mt-1">@Model.CreationDate.ToString("g")</span>
+            </div>
+            <div class="col-md-3">
+                <strong>Branch</strong><br />
+                <code>@Model.SourceRefName.Replace("refs/heads/", "")</code> &rarr; <code>@Model.TargetRefName.Replace("refs/heads/", "")</code>
+            </div>
+        </div>
+        @if (!string.IsNullOrEmpty(Model.Description))
+        {
+            <hr />
+            <p class="mb-0">@Model.Description</p>
+        }
+    </div>
+</div>
+
+<h5 class="fw-bold mb-3">Comments (@comments.Count)</h5>
+
+@if (comments.Count == 0)
+{
+    <div class="empty-state mb-3" style="padding:1.5rem;">
+        <p class="mb-0">No comments yet.</p>
+    </div>
+}
+else
+{
+    <div class="card mb-3">
+        <div class="card-body p-0">
+            @foreach (var comment in comments)
+            {
+                <div class="p-3" style="border-bottom:1px solid var(--gray-100);">
+                    <div class="d-flex justify-content-between">
+                        <strong>@comment.Author</strong>
+                        <small class="text-muted">@comment.PostedDate.ToString("g")</small>
+                    </div>
+                    <p class="mb-0 mt-1">@comment.Content</p>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<div>
+    <a href="@Model.WebUrl" target="_blank" class="btn btn-primary">Open in Azure DevOps</a>
+</div>

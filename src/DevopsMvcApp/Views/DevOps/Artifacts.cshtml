@@ -1,0 +1,60 @@
+@model List<DevOpsArtifact>
+
+@{
+    ViewData["Title"] = "Artifacts";
+    var buildNumber = ViewBag.BuildNumber as string ?? "Build";
+    var buildId = ViewBag.BuildId as int?;
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Artifacts</h1>
+        <p class="page-subtitle">Build <strong>@buildNumber</strong></p>
+    </div>
+    <div>
+        <a asp-action="Builds" class="btn btn-outline-secondary">
+            <i class="arrow">&larr;</i> Back to Builds
+        </a>
+    </div>
+</div>
+
+@if (Model.Count == 0)
+{
+    <div class="empty-state">
+        <div class="empty-icon">📦</div>
+        <h3>No Artifacts</h3>
+        <p>This build doesn't have any published artifacts.</p>
+        <a asp-action="Builds" class="btn btn-primary">View All Builds</a>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body p-0">
+            <table class="table table-devops">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var artifact in Model)
+                    {
+                        <tr>
+                            <td class="fw-semibold">@artifact.Name</td>
+                            <td><span class="badge badge-type">@artifact.Type</span></td>
+                            <td class="text-end">
+                                <a asp-action="DownloadArtifact" asp-route-downloadUrl="@artifact.DownloadUrl"
+                                   class="btn btn-sm btn-success">
+                                    Download
+                                </a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}

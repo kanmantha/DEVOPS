@@ -1,0 +1,105 @@
+@model List<ReleaseInfo>
+
+@{
+    ViewData["Title"] = "Releases";
+    var defs = ViewBag.Definitions as List<ReleaseDefinition> ?? new();
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Releases</h1>
+        <p class="page-subtitle">Release management pipeline history</p>
+    </div>
+    <div>
+        <a asp-action="Deployments" class="btn btn-outline-success btn-sm">Deployments</a>
+        <a asp-action="Environments" class="btn btn-outline-secondary btn-sm">Environments</a>
+    </div>
+</div>
+
+@if (defs.Count > 0)
+{
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="fw-bold mb-3">Create New Release</h5>
+            <form asp-action="CreateRelease" method="post" class="row g-2 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label">Release Definition</label>
+                    <select name="definitionId" class="form-select">
+                        @foreach (var d in defs)
+                        {
+                            <option value="@d.Id">@d.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label">Description (optional)</label>
+                    <input name="description" class="form-control" placeholder="Release from DevOps Portal" />
+                </div>
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-primary w-100">Create Release</button>
+                </div>
+            </form>
+        </div>
+    </div>
+}
+
+@if (Model.Count == 0)
+{
+    <div class="empty-state">
+        <div class="empty-icon">🏷️</div>
+        <h3>No Releases</h3>
+        <p>Create a release from a release definition pipeline.</p>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body p-0">
+            <table class="table table-devops">
+                <thead>
+                    <tr>
+                        <th>Release</th>
+                        <th>Status</th>
+                        <th>Created By</th>
+                        <th>Date</th>
+                        <th>Environments</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var release in Model)
+                    {
+                        <tr>
+                            <td class="fw-semibold"><a href="@release.WebUrl" target="_blank">@release.Name</a></td>
+                            <td><span class="badge bg-secondary rounded-pill">@release.Status</span></td>
+                            <td>@release.CreatedBy</td>
+                            <td>@release.CreatedOn.ToString("g")</td>
+                            <td>
+                                @foreach (var e in release.Environments)
+                                {
+                                    <span class="badge rounded-pill me-1 @(e.Status == "succeeded" ? "bg-success" : e.Status == "inProgress" ? "bg-warning" : e.Status == "rejected" ? "bg-danger" : "bg-secondary")">
+                                        @e.Name: @e.Status
+                                    </span>
+                                }
+                            </td>
+                            <td class="text-end">
+                                <a href="@release.WebUrl" target="_blank" class="btn btn-sm btn-outline-primary">Open</a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@if (defs.Count == 0)
+{
+    <div class="alert alert-info mt-3">
+        No release definitions found in your Azure DevOps project.
+        <a href="https://learn.microsoft.com/en-us/azure/devops/release/getting-started/create-release-pipeline" target="_blank">
+            Create a release pipeline
+        </a>
+        to enable release management from this portal.
+    </div>
+}

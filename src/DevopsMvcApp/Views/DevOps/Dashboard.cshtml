@@ -1,0 +1,137 @@
+@model DevOpsDashboard
+
+@{
+    ViewData["Title"] = "DevOps Dashboard";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Dashboard</h1>
+        <p class="page-subtitle">@Model.Connection.Organization / @Model.Connection.Project</p>
+    </div>
+    <div>
+        <span class="badge bg-success me-2 fs-6 px-3 py-2 rounded-pill">Connected</span>
+        <a asp-action="Disconnect" class="btn btn-outline-danger">Disconnect</a>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(Model.ErrorMessage))
+{
+    <div class="alert alert-danger">@Model.ErrorMessage</div>
+}
+
+<div class="row g-3 mb-4">
+    <div class="col fade-in fade-in-delay-1">
+        <div class="card stat-card bg-devops-repos">
+            <div class="card-body">
+                <div class="stat-icon">📁</div>
+                <p class="stat-label">Repositories</p>
+                <div class="stat-number">@Model.Repositories.Count</div>
+                <a asp-action="Repositories" class="stat-link">Manage &rarr;</a>
+            </div>
+        </div>
+    </div>
+    <div class="col fade-in fade-in-delay-2">
+        <div class="card stat-card bg-devops-pipelines">
+            <div class="card-body">
+                <div class="stat-icon">⚡</div>
+                <p class="stat-label">Pipelines</p>
+                <div class="stat-number">@Model.Pipelines.Count</div>
+                <a asp-action="Pipelines" class="stat-link">Manage &rarr;</a>
+            </div>
+        </div>
+    </div>
+    <div class="col fade-in fade-in-delay-3">
+        <div class="card stat-card bg-devops-prs">
+            <div class="card-body">
+                <div class="stat-icon">🔄</div>
+                <p class="stat-label">Active PRs</p>
+                <div class="stat-number">@Model.PullRequests.Count</div>
+                <a asp-action="PullRequests" class="stat-link">View &rarr;</a>
+            </div>
+        </div>
+    </div>
+    <div class="col">
+        <div class="card stat-card bg-devops-builds">
+            <div class="card-body">
+                <div class="stat-icon">📦</div>
+                <p class="stat-label">Recent Builds</p>
+                <div class="stat-number">@Model.RecentBuilds.Count</div>
+                <a asp-action="Builds" class="stat-link">View &rarr;</a>
+            </div>
+        </div>
+    </div>
+    <div class="col">
+        <div class="card stat-card" style="background:linear-gradient(135deg,#7c3aed,#a855f7);">
+            <div class="card-body">
+                <div class="stat-icon">🚀</div>
+                <p class="stat-label">Deployments</p>
+                <div class="stat-number">BG</div>
+                <a asp-action="Deployments" class="stat-link">Manage &rarr;</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Repositories</span>
+                <a asp-action="CreateRepository" class="btn btn-sm btn-primary">+ New</a>
+            </div>
+            <div class="card-body">
+                @if (Model.Repositories.Count == 0)
+                {
+                    <p class="text-muted mb-0">No repositories found.</p>
+                }
+                else
+                {
+                    <div class="list-group list-group-flush">
+                        @foreach (var repo in Model.Repositories.Take(5))
+                        {
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <div>
+                                    <a href="@repo.WebUrl" target="_blank" class="fw-semibold">@repo.Name</a>
+                                    <span class="badge bg-secondary ms-2">@repo.DefaultBranch</span>
+                                </div>
+                                <div>
+                                    <a asp-action="RepoFiles" asp-route-repoId="@repo.Id" class="btn btn-sm btn-outline-info">Browse</a>
+                                    <a asp-action="RepoCommits" asp-route-repoId="@repo.Id" class="btn btn-sm btn-outline-secondary">Commits</a>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Recent Builds</span>
+                <a asp-action="Builds" class="btn btn-sm btn-outline-info">All Builds</a>
+            </div>
+            <div class="card-body">
+                @if (Model.RecentBuilds.Count == 0)
+                {
+                    <p class="text-muted mb-0">No builds yet.</p>
+                }
+                else
+                {
+                    <div class="list-group list-group-flush">
+                        @foreach (var build in Model.RecentBuilds.Take(5))
+                        {
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <a href="@build.WebUrl" target="_blank" class="fw-semibold">@build.BuildNumber</a>
+                                <span class="badge @(build.Result == "succeeded" ? "bg-success" : build.Result == "failed" ? "bg-danger" : "bg-warning") rounded-pill">
+                                    @(string.IsNullOrEmpty(build.Result) ? "In Progress" : build.Result)
+                                </span>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>

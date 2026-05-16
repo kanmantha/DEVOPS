@@ -1,0 +1,213 @@
+@model List<DeploymentEnvironment>
+
+@{
+    ViewData["Title"] = "Blue-Green Deployments";
+    var recentReleases = ViewBag.RecentReleases as List<ReleaseInfo> ?? new();
+}
+
+<style>
+    .slot-card {
+        border-radius: 12px;
+        padding: 1.25rem;
+        min-height: 200px;
+        display: flex;
+        flex-direction: column;
+        transition: all .25s ease;
+        position: relative;
+        overflow: hidden;
+    }
+    .slot-card.active-slot {
+        border: 3px solid #059669;
+        box-shadow: 0 0 0 4px rgba(5,150,105,.15);
+    }
+    .slot-card.inactive-slot {
+        border: 2px dashed #d1d5db;
+        opacity: .75;
+    }
+    .slot-card .slot-badge {
+        position: absolute;
+        top: .75rem;
+        right: .75rem;
+        font-size: .7rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+        padding: .25rem .65rem;
+        border-radius: 999px;
+    }
+    .slot-card .slot-version {
+        font-size: 1.8rem;
+        font-weight: 800;
+        margin: .5rem 0;
+    }
+    .slot-card .slot-label {
+        font-weight: 700;
+        font-size: 1.1rem;
+    }
+    .slot-swap-arrow {
+        font-size: 2rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--gray-400);
+    }
+    .env-header {
+        border-left: 4px solid var(--primary);
+        padding-left: 1rem;
+        margin-bottom: 1rem;
+    }
+    .env-header h3 {
+        font-weight: 700;
+        margin: 0;
+    }
+    .env-header .env-meta {
+        color: var(--gray-500);
+        font-size: .85rem;
+    }
+    .live-badge {
+        background: #059669;
+        color: #fff;
+        font-size: .7rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        padding: .2rem .6rem;
+        border-radius: 999px;
+        letter-spacing: .05em;
+    }
+    .deploy-form {
+        background: var(--gray-50);
+        border-radius: 8px;
+        padding: .75rem;
+        margin-top: .5rem;
+    }
+</style>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Blue-Green Deployments</h1>
+        <p class="page-subtitle">Manage deployment environments and slots</p>
+    </div>
+    <div>
+        <a asp-action="Environments" class="btn btn-outline-secondary btn-sm">Detail View</a>
+        <a asp-action="Releases" class="btn btn-outline-info btn-sm">Releases</a>
+    </div>
+</div>
+
+@foreach (var env in Model)
+{
+    var activeSlot = env.Slots.FirstOrDefault(s => s.Active);
+    var inactiveSlot = env.Slots.FirstOrDefault(s => !s.Active);
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="env-header d-flex justify-content-between align-items-start">
+                <div>
+                    <h3>@env.Name</h3>
+                    <div class="env-meta">
+                        @env.Description
+                        @if (!string.IsNullOrEmpty(env.AppServiceName))
+                        {
+                            <span> &middot; @env.AppServiceName</span>
+                        }
+                        <span> &middot; Last: <strong>@env.LastDeployedVersion</strong></span>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="live-badge">@env.Status</span>
+                </div>
+            </div>
+
+            <div class="row g-3 mt-2 align-items-stretch">
+                @foreach (var slot in env.Slots)
+                {
+                    <div class="col-md-5">
+                        <div class="slot-card @(slot.Active ? "active-slot" : "inactive-slot")" style="background:@(slot.Active ? slot.BackgroundColor : "#fff");">
+                            @if (slot.Active)
+                            {
+                                <span class="slot-badge" style="background:#059669;color:#fff;">LIVE</span>
+                            }
+                            else
+                            {
+                                <span class="slot-badge" style="background:#9ca3af;color:#fff;">Standby</span>
+                            }
+                            <div class="slot-label" style="color:@slot.Color;">
+                                @slot.Label Slot
+                            </div>
+                            <div class="slot-version">@slot.CurrentVersion</div>
+                            <div style="font-size:.8rem;color:var(--gray-500);margin-top:.25rem;">
+                                @if (slot.LastDeployed.HasValue)
+                                {
+                                    <span>Deployed @slot.LastDeployed.Value.ToString("g")</span>
+                                }
+                                @if (!string.IsNullOrEmpty(slot.DeploymentStatus))
+                                {
+                                    <span class="badge bg-success rounded-pill ms-2">@slot.DeploymentStatus</span>
+                                }
+                            </div>
+                            <div style="margin-top:auto;padding-top:.75rem;">
+                                <form asp-action="DeployToSlot" method="post" class="deploy-form">
+                                    <input type="hidden" name="envName" value="@env.Name" />
+                                    <input type="hidden" name="slotLabel" value="@slot.Label" />
+                                    <div class="input-group input-group-sm">
+                                        <input name="version" class="form-control" placeholder="v1.2.4" value="v1.2.4-build.46" required />
+                                        <button type="submit" class="btn btn-sm btn-outline-primary">Deploy</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+
+                    @if (slot == activeSlot && inactiveSlot != null)
+                    {
+                        <div class="col-md-2 slot-swap-arrow">
+                            <form asp-action="SwapSlots" method="post" class="text-center">
+                                <input type="hidden" name="envName" value="@env.Name" />
+                                <div style="font-size:2rem;">⇄</div>
+                                <button type="submit" class="btn btn-warning btn-sm mt-1 fw-bold"
+                                        onclick="return confirm('Swap @activeSlot.Label ↔ @inactiveSlot.Label in @env.Name?')">
+                                    Swap Slots
+                                </button>
+                                <div style="font-size:.7rem;color:var(--gray-400);margin-top:.25rem;">Blue ↔ Green</div>
+                            </form>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@if (recentReleases.Count > 0)
+{
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Recent Releases</span>
+            <a asp-action="Releases" class="btn btn-sm btn-outline-info">All Releases</a>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-devops">
+                <thead>
+                    <tr>
+                        <th>Release</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in recentReleases)
+                    {
+                        <tr>
+                            <td class="fw-semibold"><a href="@r.WebUrl" target="_blank">@r.Name</a></td>
+                            <td><span class="badge bg-secondary rounded-pill">@r.Status</span></td>
+                            <td>@r.CreatedOn.ToString("g")</td>
+                            <td class="text-end">
+                                <a href="@r.WebUrl" target="_blank" class="btn btn-sm btn-outline-primary">Open</a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}

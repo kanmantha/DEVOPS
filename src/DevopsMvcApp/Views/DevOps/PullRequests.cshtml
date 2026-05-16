@@ -1,0 +1,77 @@
+@model List<DevOpsPullRequest>
+
+@{
+    ViewData["Title"] = "Pull Requests";
+    var repos = ViewBag.Repositories as List<DevOpsRepository> ?? new();
+    var selectedRepoId = ViewBag.SelectedRepoId as string;
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Pull Requests</h1>
+        <p class="page-subtitle">Active PRs requiring attention</p>
+    </div>
+    <div>
+        <a asp-action="CreatePullRequest" class="btn btn-primary">+ New PR</a>
+    </div>
+</div>
+
+<form method="get" asp-action="PullRequests" class="row mb-3">
+    <div class="col-md-4">
+        <select name="repoId" class="form-select" onchange="this.form.submit()">
+            @foreach (var repo in repos)
+            {
+                <option value="@repo.Id" selected="@(repo.Id == selectedRepoId)">@repo.Name</option>
+            }
+        </select>
+    </div>
+</form>
+
+@if (Model.Count == 0)
+{
+    <div class="empty-state">
+        <div class="empty-icon">🔄</div>
+        <h3>No Active PRs</h3>
+        <p>No open pull requests in this repository.</p>
+        <a asp-action="CreatePullRequest" class="btn btn-primary">Create Pull Request</a>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body p-0">
+            <table class="table table-devops">
+                <thead>
+                    <tr>
+                        <th>PR #</th>
+                        <th>Title</th>
+                        <th>Source</th>
+                        <th>Author</th>
+                        <th>Created</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var pr in Model)
+                    {
+                        <tr>
+                            <td class="fw-semibold">@pr.PullRequestId</td>
+                            <td>@pr.Title</td>
+                            <td><code>@pr.SourceRefName.Replace("refs/heads/", "")</code></td>
+                            <td>@pr.CreatedBy</td>
+                            <td>@pr.CreationDate.ToString("g")</td>
+                            <td class="text-end">
+                                <a asp-action="PullRequestDetail" asp-route-repoId="@selectedRepoId" asp-route-prId="@pr.PullRequestId"
+                                   class="btn btn-sm btn-outline-info">Detail</a>
+                                <a href="@pr.WebUrl" target="_blank" class="btn btn-sm btn-outline-primary">Open</a>
+                                <a asp-action="ApprovePullRequest"
+                                   asp-route-repoId="@selectedRepoId" asp-route-prId="@pr.PullRequestId"
+                                   class="btn btn-sm btn-outline-success">Approve</a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
