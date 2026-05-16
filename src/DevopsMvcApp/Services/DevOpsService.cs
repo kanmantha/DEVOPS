@@ -45,9 +45,13 @@ public class DevOpsService
     public string? Project => _connection?.Project;
 
     // ── URL builders ──
-    /// <summary>Builds a project-scoped Azure DevOps REST API URL with api-version=7.1.</summary>
-    private string Api(string path) =>
-        $"https://dev.azure.com/{_connection!.Organization}/{_connection.Project}/_apis/{path}?api-version=7.1";
+    /// <summary>Builds a project-scoped Azure DevOps REST API URL with api-version=7.1.
+    /// Handles paths that already contain query parameters (uses &amp; vs ? accordingly).</summary>
+    private string Api(string path)
+    {
+        var sep = path.Contains('?') ? '&' : '?';
+        return $"https://dev.azure.com/{_connection!.Organization}/{_connection.Project}/_apis/{path}{sep}api-version=7.1";
+    }
     /// <summary>Builds an org-level Azure DevOps REST API URL (no project segment).</summary>
     private string OrgApi(string path) =>
         $"https://dev.azure.com/{_connection!.Organization}/_apis/{path}?api-version=7.1";
@@ -564,13 +568,14 @@ public class DevOpsService
     /// (the YAML Pipelines API doesn't support DELETE).</summary>
     public async Task DeletePipelineAsync(int pipelineId, string pipelineName)
     {
-        // Look up the build definition that backs this YAML pipeline
-        var json = await GetAsync(Api($"build/definitions?name={Uri.EscapeDataString(pipelineName)}"));
+        // Fetch all build definitions and find the one matching the pipeline name
+        var json = await GetAsync(Api($"build/definitions"));
         var root = JsonDocument.Parse(json);
-        var defs = root.RootElement.GetProperty("value").EnumerateArray().ToList();
-        if (defs.Count == 0)
+        var defs = root.RootElement.GetProperty("value").EnumerateArray()
+            .FirstOrDefault(d => d.GetProperty("name").GetString() == pipelineName);
+        if (defs.ValueKind == JsonValueKind.Undefined)
             throw new HttpRequestException($"No build definition found matching pipeline '{pipelineName}'.");
-        var defId = defs[0].GetProperty("id").GetInt32();
+        var defId = defs.GetProperty("id").GetInt32();
         await DeleteAsync(Api($"build/definitions/{defId}"));
     }
 
