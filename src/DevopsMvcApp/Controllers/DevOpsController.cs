@@ -370,11 +370,15 @@ public class DevOpsController : Controller
     public async Task<IActionResult> RepoFiles(string repoId, string? path, string? branch)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
-        var files = await _devOps.GetRepoFilesAsync(repoId, path ?? "", branch ?? "main");
+        var repos = await _devOps.GetRepositoriesAsync();
+        var repo = repos.FirstOrDefault(r => r.Id == repoId);
+        var defaultBranch = repo?.DefaultBranch?.Replace("refs/heads/", "") ?? "main";
+        branch ??= defaultBranch;
+        var files = await _devOps.GetRepoFilesAsync(repoId, path ?? "", branch);
         ViewBag.RepoId = repoId;
         ViewBag.CurrentPath = path ?? "";
-        ViewBag.Branch = branch ?? "main";
-        ViewBag.RepoName = (await _devOps.GetRepositoriesAsync()).FirstOrDefault(r => r.Id == repoId)?.Name ?? repoId;
+        ViewBag.Branch = branch;
+        ViewBag.RepoName = repo?.Name ?? repoId;
         return View(files);
     }
 
@@ -382,7 +386,11 @@ public class DevOpsController : Controller
     public async Task<IActionResult> RepoFileContent(string repoId, string path, string? branch)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
-        var file = await _devOps.GetFileContentAsync(repoId, path, branch ?? "main");
+        var repos = await _devOps.GetRepositoriesAsync();
+        var repo = repos.FirstOrDefault(r => r.Id == repoId);
+        var defaultBranch = repo?.DefaultBranch?.Replace("refs/heads/", "") ?? "main";
+        branch ??= defaultBranch;
+        var file = await _devOps.GetFileContentAsync(repoId, path, branch);
         return View(file);
     }
 
@@ -411,7 +419,9 @@ public class DevOpsController : Controller
     public async Task<IActionResult> EditFile(string repoId, string path, string? branch)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
-        branch ??= "main";
+        var repos = await _devOps.GetRepositoriesAsync();
+        var repo = repos.FirstOrDefault(r => r.Id == repoId);
+        branch ??= repo?.DefaultBranch?.Replace("refs/heads/", "") ?? "main";
         var file = await _devOps.GetFileContentAsync(repoId, path, branch);
         return View(file);
     }
