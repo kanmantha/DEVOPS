@@ -720,24 +720,27 @@ steps:
   displayName: 'Restore packages'
   inputs:
     command: 'restore'
+    projects: 'src/DevopsMvcApp/*.csproj'
 
 - task: DotNetCoreCLI@2
   displayName: 'Build'
   inputs:
     command: 'build'
+    projects: 'src/DevopsMvcApp/*.csproj'
     arguments: '--configuration $(buildConfiguration)'
 
 - task: DotNetCoreCLI@2
   displayName: 'Run tests'
   inputs:
     command: 'test'
+    projects: 'src/DevopsMvcApp/*.csproj'
     arguments: '--configuration $(buildConfiguration) --verbosity normal'
 
 - task: DotNetCoreCLI@2
   displayName: 'Publish'
   inputs:
     command: 'publish'
-    publishWebProjects: true
+    projects: 'src/DevopsMvcApp/*.csproj'
     arguments: '--configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)'
 
 - task: PublishBuildArtifacts@1
