@@ -308,11 +308,18 @@ public class DevOpsService
         };
     }
 
-    /// <summary>Updates the default branch of a repository.</summary>
+    /// <summary>Updates the default branch of a repository. Silently ignores 404 when the ref doesn't exist (empty repo or branch not yet pushed).</summary>
     public async Task SetRepoDefaultBranchAsync(string repoId, string branch)
     {
-        var body = JsonSerializer.Serialize(new { defaultBranch = $"refs/heads/{branch}" }, JsonOpts);
-        await PatchAsync(Api($"git/repositories/{repoId}"), body);
+        try
+        {
+            var body = JsonSerializer.Serialize(new { defaultBranch = $"refs/heads/{branch}" }, JsonOpts);
+            await PatchAsync(Api($"git/repositories/{repoId}"), body);
+        }
+        catch (HttpRequestException ex) when (ex.Message.Contains("404") || ex.Message.Contains("does not exist"))
+        {
+            // Branch ref doesn't exist yet — this is non-critical, pipeline creation specifies branch directly
+        }
     }
 
     // ══════════════════════════════════════════
