@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using DevopsMvcApp.Data;
+using DevopsMvcApp.Filters;
 using DevopsMvcApp.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -25,7 +26,10 @@ builder.Services.AddDefaultIdentity<IdentityUser>(options =>
         options.SignIn.RequireConfirmedPhoneNumber = false;
     })
     .AddEntityFrameworkStores<ApplicationDbContext>();
-builder.Services.AddControllersWithViews();
+builder.Services.AddControllersWithViews(options =>
+{
+    options.Filters.Add<DevOpsExceptionFilter>();
+});
 
 // ── Azure DevOps integration: HttpClient + session storage for PAT ──
 builder.Services.AddHttpClient<DevOpsService>();
@@ -39,16 +43,10 @@ builder.Services.AddSession(options =>
 
 var app = builder.Build();
 
-// ── Middleware pipeline ──
-if (app.Environment.IsDevelopment())
-{
-    app.UseMigrationsEndPoint();
-}
-else
-{
-    app.UseExceptionHandler("/Home/Error");
-    app.UseHsts();
-}
+// ── Middleware pipeline (exception handler applies in all environments) ──
+app.UseExceptionHandler("/Home/Error");
+app.UseMigrationsEndPoint();
+app.UseHsts();
 
 app.UseHttpsRedirection();
 app.UseRouting();

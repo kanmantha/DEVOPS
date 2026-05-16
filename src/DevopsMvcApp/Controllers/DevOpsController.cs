@@ -122,7 +122,8 @@ public class DevOpsController : Controller
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
         if (!ModelState.IsValid) return View(req);
-        await _devOps.CreateRepositoryAsync(req.Name);
+        try { await _devOps.CreateRepositoryAsync(req.Name); }
+        catch (Exception ex) { TempData["Error"] = $"Failed to create repository: {ex.Message}"; return RedirectToAction(nameof(Repositories)); }
         TempData["Success"] = $"Repository '{req.Name}' created.";
         return RedirectToAction(nameof(Repositories));
     }
@@ -148,17 +149,19 @@ public class DevOpsController : Controller
             ModelState.AddModelError("", "Name is required.");
             return View(await _devOps.GetRepositoriesAsync().ContinueWith(t => t.Result.FirstOrDefault(r => r.Id == repoId)));
         }
-        await _devOps.RenameRepositoryAsync(repoId, newName.Trim());
+        try { await _devOps.RenameRepositoryAsync(repoId, newName.Trim()); }
+        catch (Exception ex) { TempData["Error"] = $"Failed to rename repository: {ex.Message}"; return RedirectToAction(nameof(Repositories)); }
         TempData["Success"] = $"Repository renamed to '{newName}'.";
         return RedirectToAction(nameof(Repositories));
     }
-
+    
     /// <summary>Deletes a repository after confirmation.</summary>
     [HttpPost]
     public async Task<IActionResult> DeleteRepository(string repoId, string repoName)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
-        await _devOps.DeleteRepositoryAsync(repoId);
+        try { await _devOps.DeleteRepositoryAsync(repoId); }
+        catch (Exception ex) { TempData["Error"] = $"Failed to delete repository: {ex.Message}"; return RedirectToAction(nameof(Repositories)); }
         TempData["Success"] = $"Repository '{repoName}' deleted.";
         return RedirectToAction(nameof(Repositories));
     }
@@ -246,8 +249,12 @@ public class DevOpsController : Controller
     public async Task<IActionResult> RunPipeline(int id)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
-        var run = await _devOps.RunPipelineAsync(id);
-        if (run != null) TempData["Success"] = $"Pipeline run #{run.Id} queued.";
+        try
+        {
+            var run = await _devOps.RunPipelineAsync(id);
+            if (run != null) TempData["Success"] = $"Pipeline run #{run.Id} queued.";
+        }
+        catch (Exception ex) { TempData["Error"] = $"Failed to queue run: {ex.Message}"; }
         return RedirectToAction(nameof(Pipelines));
     }
 
@@ -266,7 +273,8 @@ public class DevOpsController : Controller
     public async Task<IActionResult> DeletePipeline(int id, string name)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
-        await _devOps.DeletePipelineAsync(id, name);
+        try { await _devOps.DeletePipelineAsync(id, name); }
+        catch (Exception ex) { TempData["Error"] = $"Failed to delete pipeline: {ex.Message}"; return RedirectToAction(nameof(Pipelines)); }
         TempData["Success"] = $"Pipeline '{name}' deleted.";
         return RedirectToAction(nameof(Pipelines));
     }
@@ -304,9 +312,15 @@ public class DevOpsController : Controller
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
         if (!ModelState.IsValid) return View(req);
-        var pr = await _devOps.CreatePullRequestAsync(req);
-        if (pr != null)
-            TempData["Success"] = $"PR #{pr.PullRequestId} created.";
+        try
+        {
+            var pr = await _devOps.CreatePullRequestAsync(req);
+            if (pr != null)
+                TempData["Success"] = $"PR #{pr.PullRequestId} created.";
+            else
+                TempData["Error"] = "Failed to create pull request.";
+        }
+        catch (Exception ex) { TempData["Error"] = $"Failed to create PR: {ex.Message}"; }
         return RedirectToAction(nameof(PullRequests));
     }
 
@@ -314,7 +328,8 @@ public class DevOpsController : Controller
     public async Task<IActionResult> ApprovePullRequest(string repoId, int prId)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
-        await _devOps.UpdatePullRequestStatusAsync(repoId, prId, "completed");
+        try { await _devOps.UpdatePullRequestStatusAsync(repoId, prId, "completed"); }
+        catch (Exception ex) { TempData["Error"] = $"Failed to complete PR: {ex.Message}"; return RedirectToAction(nameof(PullRequests)); }
         TempData["Success"] = $"PR #{prId} completed.";
         return RedirectToAction(nameof(PullRequests));
     }
@@ -324,7 +339,8 @@ public class DevOpsController : Controller
     public async Task<IActionResult> AbandonPullRequest(string repoId, int prId)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
-        await _devOps.AbandonPullRequestAsync(repoId, prId);
+        try { await _devOps.AbandonPullRequestAsync(repoId, prId); }
+        catch (Exception ex) { TempData["Error"] = $"Failed to abandon PR: {ex.Message}"; return RedirectToAction(nameof(PullRequests)); }
         TempData["Success"] = $"PR #{prId} abandoned.";
         return RedirectToAction(nameof(PullRequests));
     }
@@ -336,7 +352,8 @@ public class DevOpsController : Controller
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
         if (!string.IsNullOrWhiteSpace(content))
         {
-            await _devOps.AddPullRequestCommentAsync(repoId, prId, content);
+            try { await _devOps.AddPullRequestCommentAsync(repoId, prId, content); }
+            catch (Exception ex) { TempData["Error"] = $"Failed to add comment: {ex.Message}"; return RedirectToAction(nameof(PullRequestDetail), new { repoId, prId }); }
             TempData["Success"] = "Comment added.";
         }
         return RedirectToAction(nameof(PullRequestDetail), new { repoId, prId });
@@ -436,7 +453,8 @@ public class DevOpsController : Controller
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
         if (!ModelState.IsValid) return View(req);
-        await _devOps.CommitFileToBranchAsync(req.RepositoryId, req.Branch, req.FilePath, req.Content, req.Comment);
+        try { await _devOps.CommitFileToBranchAsync(req.RepositoryId, req.Branch, req.FilePath, req.Content, req.Comment); }
+        catch (Exception ex) { TempData["Error"] = $"Failed to upload file: {ex.Message}"; return RedirectToAction(nameof(RepoFiles), new { repoId = req.RepositoryId, branch = req.Branch }); }
         TempData["Success"] = $"File '{req.FilePath}' committed to {req.Branch}.";
         return RedirectToAction(nameof(RepoFiles), new { repoId = req.RepositoryId, branch = req.Branch });
     }
@@ -458,7 +476,8 @@ public class DevOpsController : Controller
     public async Task<IActionResult> EditFile(string repoId, string path, string branch, string content, string comment)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
-        await _devOps.EditFileAsync(repoId, branch, path, content, comment ?? $"Updated {path}");
+        try { await _devOps.EditFileAsync(repoId, branch, path, content, comment ?? $"Updated {path}"); }
+        catch (Exception ex) { TempData["Error"] = $"Failed to edit file: {ex.Message}"; return RedirectToAction(nameof(RepoFiles), new { repoId, branch }); }
         TempData["Success"] = $"File '{path}' updated.";
         return RedirectToAction(nameof(RepoFiles), new { repoId, branch });
     }
@@ -468,7 +487,8 @@ public class DevOpsController : Controller
     public async Task<IActionResult> DeleteFile(string repoId, string path, string branch)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
-        await _devOps.DeleteFileAsync(repoId, branch, path, $"Deleted {path}");
+        try { await _devOps.DeleteFileAsync(repoId, branch, path, $"Deleted {path}"); }
+        catch (Exception ex) { TempData["Error"] = $"Failed to delete file: {ex.Message}"; return RedirectToAction(nameof(RepoFiles), new { repoId, branch }); }
         TempData["Success"] = $"File '{path}' deleted.";
         return RedirectToAction(nameof(RepoFiles), new { repoId, branch });
     }
@@ -503,7 +523,8 @@ public class DevOpsController : Controller
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
         sourceBranch = string.IsNullOrWhiteSpace(sourceBranch) ? null : sourceBranch;
-        await _devOps.CreateBranchAsync(repoId, branchName.Trim(), sourceBranch);
+        try { await _devOps.CreateBranchAsync(repoId, branchName.Trim(), sourceBranch); }
+        catch (Exception ex) { TempData["Error"] = $"Failed to create branch: {ex.Message}"; return RedirectToAction(nameof(RepoBranches), new { repoId }); }
         TempData["Success"] = $"Branch '{branchName}' created.";
         return RedirectToAction(nameof(RepoBranches), new { repoId });
     }
@@ -513,7 +534,8 @@ public class DevOpsController : Controller
     public async Task<IActionResult> DeleteBranch(string repoId, string branchName)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
-        await _devOps.DeleteBranchAsync(repoId, branchName);
+        try { await _devOps.DeleteBranchAsync(repoId, branchName); }
+        catch (Exception ex) { TempData["Error"] = $"Failed to delete branch: {ex.Message}"; return RedirectToAction(nameof(RepoBranches), new { repoId }); }
         TempData["Success"] = $"Branch '{branchName}' deleted.";
         return RedirectToAction(nameof(RepoBranches), new { repoId });
     }
@@ -526,7 +548,8 @@ public class DevOpsController : Controller
     public async Task<IActionResult> CancelRun(int pipelineId, int runId)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
-        await _devOps.CancelPipelineRunAsync(pipelineId, runId);
+        try { await _devOps.CancelPipelineRunAsync(pipelineId, runId); }
+        catch (Exception ex) { TempData["Error"] = $"Failed to cancel run: {ex.Message}"; return RedirectToAction(nameof(PipelineRuns), new { id = pipelineId }); }
         TempData["Success"] = $"Run #{runId} cancelled.";
         return RedirectToAction(nameof(PipelineRuns), new { id = pipelineId });
     }
@@ -535,7 +558,8 @@ public class DevOpsController : Controller
     public async Task<IActionResult> CancelBuild(int buildId)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
-        await _devOps.CancelBuildAsync(buildId);
+        try { await _devOps.CancelBuildAsync(buildId); }
+        catch (Exception ex) { TempData["Error"] = $"Failed to cancel build: {ex.Message}"; return RedirectToAction(nameof(Builds)); }
         TempData["Success"] = $"Build #{buildId} cancelled.";
         return RedirectToAction(nameof(Builds));
     }
@@ -590,19 +614,23 @@ public class DevOpsController : Controller
     public async Task<IActionResult> AutoCreatePr(string repoId, string featureBranch, string title, string description)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
-        var req = new CreatePullRequestRequest
+        try
         {
-            RepositoryId = repoId,
-            SourceBranch = featureBranch,
-            TargetBranch = "main",
-            Title = title,
-            Description = description
-        };
-        var pr = await _devOps.CreatePullRequestAsync(req);
-        if (pr != null)
-            TempData["Success"] = $"Auto PR #{pr.PullRequestId} created from '{featureBranch}'.";
-        else
-            TempData["Error"] = "Failed to create auto PR.";
+            var req = new CreatePullRequestRequest
+            {
+                RepositoryId = repoId,
+                SourceBranch = featureBranch,
+                TargetBranch = "main",
+                Title = title,
+                Description = description
+            };
+            var pr = await _devOps.CreatePullRequestAsync(req);
+            if (pr != null)
+                TempData["Success"] = $"Auto PR #{pr.PullRequestId} created from '{featureBranch}'.";
+            else
+                TempData["Error"] = "Failed to create auto PR.";
+        }
+        catch (Exception ex) { TempData["Error"] = $"Auto PR failed: {ex.Message}"; }
         return RedirectToAction(nameof(PullRequests));
     }
 
@@ -643,11 +671,15 @@ public class DevOpsController : Controller
     public async Task<IActionResult> CreateRelease(int definitionId, string? description)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
-        var release = await _devOps.CreateReleaseAsync(definitionId, description);
-        if (release != null)
-            TempData["Success"] = $"Release '{release.Name}' created.";
-        else
-            TempData["Error"] = "Failed to create release.";
+        try
+        {
+            var release = await _devOps.CreateReleaseAsync(definitionId, description);
+            if (release != null)
+                TempData["Success"] = $"Release '{release.Name}' created.";
+            else
+                TempData["Error"] = "Failed to create release.";
+        }
+        catch (Exception ex) { TempData["Error"] = $"Failed to create release: {ex.Message}"; }
         return RedirectToAction(nameof(Releases));
     }
 
@@ -668,11 +700,15 @@ public class DevOpsController : Controller
             ModelState.AddModelError("", "Name is required.");
             return View(new CreateReleaseDefinitionRequest());
         }
-        var def = await _devOps.CreateReleaseDefinitionAsync(name.Trim(), description?.Trim());
-        if (def != null)
-            TempData["Success"] = $"Release definition '{def.Name}' created.";
-        else
-            TempData["Error"] = "Failed to create release definition.";
+        try
+        {
+            var def = await _devOps.CreateReleaseDefinitionAsync(name.Trim(), description?.Trim());
+            if (def != null)
+                TempData["Success"] = $"Release definition '{def.Name}' created.";
+            else
+                TempData["Error"] = "Failed to create release definition.";
+        }
+        catch (Exception ex) { TempData["Error"] = $"Failed to create release definition: {ex.Message}"; }
         return RedirectToAction(nameof(Releases));
     }
 
@@ -681,7 +717,8 @@ public class DevOpsController : Controller
     public async Task<IActionResult> DeleteReleaseDefinition(int id, string name)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
-        await _devOps.DeleteReleaseDefinitionAsync(id);
+        try { await _devOps.DeleteReleaseDefinitionAsync(id); }
+        catch (Exception ex) { TempData["Error"] = $"Failed to delete release definition: {ex.Message}"; return RedirectToAction(nameof(Releases)); }
         TempData["Success"] = $"Release definition '{name}' deleted.";
         return RedirectToAction(nameof(Releases));
     }
@@ -709,7 +746,8 @@ public class DevOpsController : Controller
     public async Task<IActionResult> DeployToSlot(string envName, string slotLabel, string version)
     {
         if (!EnsureConnected()) return RedirectToAction(nameof(Connect));
-        var record = await _devOps.DeployToSlotAsync(envName, slotLabel, version);
+        try { await _devOps.DeployToSlotAsync(envName, slotLabel, version); }
+        catch (Exception ex) { TempData["Error"] = $"Deploy failed: {ex.Message}"; return RedirectToAction(nameof(Deployments)); }
         TempData["Success"] = $"Deployed v{version} to {envName}/{slotLabel} slot.";
         return RedirectToAction(nameof(Deployments));
     }
